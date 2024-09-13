@@ -49,11 +49,6 @@ function handleMonthChange(newMonth) {
     <div class="card">
         <h2 class="text-xl font-bold mb-4">Monthly Sales Report - {{ currentMonth }}</h2>
 
-        <!-- Month Selector (Optional) -->
-        <div class="mb-4">
-            <InputText v-model="filters.global.value" placeholder="Search..." class="w-full md:w-auto" />
-        </div>
-
         <DataTable
             ref="dt"
             v-model:selection="selectedReport"
@@ -65,11 +60,11 @@ function handleMonthChange(newMonth) {
             <template #header>
                 <div class="flex flex-wrap gap-2 items-center justify-between">
                     <h4 class="m-0">Monthly Report Data</h4>
-                    <InputText
+                    <!-- <InputText
                         v-model="filters.global.value"
                         placeholder="Search..."
                         class="w-full md:w-auto"
-                    />
+                    /> -->
                 </div>
             </template>
 
