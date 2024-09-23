@@ -5,6 +5,9 @@ import { fileURLToPath, URL } from "node:url";
 import { PrimeVueResolver } from "@primevue/auto-import-resolver";
 import vue from "@vitejs/plugin-vue";
 import Components from "unplugin-vue-components/vite";
+import {internalIpV4} from 'internal-ip';
+
+const localIp = internalIpV4();  // Get local IP asynchronously
 
 export default defineConfig({
     optimizeDeps: {
@@ -17,8 +20,10 @@ export default defineConfig({
         },
     },
     server: {
-        host: "127.0.0.1", // or 'localhost'
+        host:'localhost', // fallback to localhost if no IP found
         port: 5173, // Ensure this matches the port where Vite is running
+        changeOrigin: true,
+        secure: false,
     },
     plugins: [
         laravel({
