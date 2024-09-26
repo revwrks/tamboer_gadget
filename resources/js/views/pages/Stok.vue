@@ -20,8 +20,12 @@ const fetchProducts = async () => {
     }
 };
 
-onMounted(fetchProducts);
+onMounted(() => {
+    fetchUserData();
+    fetchProducts();
+});
 
+const user = ref({});
 const toast = useToast();
 const dt = ref();
 const productDialog = ref(false);
@@ -29,6 +33,23 @@ const deleteProductDialog = ref(false);
 const deleteProductsDialog = ref(false);
 const product = ref({});
 const selectedProducts = ref();
+const penjualanDialog = ref(false); // New modal for harga jual input
+
+// Fetch user data to determine the level
+const fetchUserData = async () => {
+  try {
+    // Assuming the user ID (token) is stored in localStorage
+    const id_user = localStorage.getItem("token");
+
+    // Fetch user data based on their ID
+    const response = await axios.get(`/api/users/${id_user}`);
+
+    // Set the user data
+    user.value = response.data;
+  } catch (error) {
+    console.error("Error fetching user data:", error);
+  }
+};
 
 const filteredData = computed(() => {
     const filterValue = filters.value.global.value?.toLowerCase() || "";
@@ -45,6 +66,9 @@ const filteredData = computed(() => {
         );
     });
 });
+
+// Only show "harga jual" and edit buttons if the user is an owner
+const isOwner = computed(() => user.value.level === "owner");
 
 const submitted = ref(false);
 function formatCurrency(value) {
@@ -160,13 +184,19 @@ function saveProduct() {
 // Custom sorting function for sorting by status
 function customSort(event) {
     const statusPriority = { ada: 1, terjual: 2 }; // Lower number means higher priority (i.e., 'ada' comes first)
-    
+
     event.data.sort((a, b) => {
         return statusPriority[a.status] - statusPriority[b.status];
     });
 }
 
-function createPenjualan(prod) {
+// Open harga jual dialog for sales and submit penjualan
+function openPenjualanDialog(prod) {
+    product.value = { ...prod };
+    penjualanDialog.value = true; // Show modal for sales to input harga jual
+}
+
+function createPenjualan() {
     // Get the current user's ID from the token
     const id_user = localStorage.getItem("token");
 
@@ -174,14 +204,14 @@ function createPenjualan(prod) {
     axios
         .post("/api/penjualan", {
             tanggal: new Date(), // Set current date
-            id_stock: prod.id_stock,
-            harga_jual: prod.harga_jual,
+            id_stock: product.value.id_stock,
+            harga_jual: product.value.harga_jual, // Sales input
             id_sales: id_user, // Automatically set the sales ID based on current user
         })
         .then((response) => {
             // Update stock status to "terjual"
             axios
-                .put(`/api/stocks/${prod.id_stock}`, {
+                .put(`/api/stocks/${product.value.id_stock}`, {
                     status: "terjual",
                 })
                 .then(() => {
@@ -210,6 +240,8 @@ function createPenjualan(prod) {
                 life: 3000,
             });
         });
+    penjualanDialog.value = false; // Close the modal
+    product.value = {};
 }
 
 function editProduct(prod) {
@@ -299,9 +331,7 @@ function deleteSelectedProducts() {
     deleteProductsDialog.value = false;
     selectedProducts.value = null;
 }
-
 </script>
-
 
 <template>
     <div>
@@ -423,16 +453,18 @@ function deleteSelectedProducts() {
                     </template>
                 </Column>
 
-                <Column
-                    field="harga_jual"
-                    header="Harga Jual"
-                    sortable
-                    style="min-width: 8rem"
-                >
-                    <template #body="slotProps">
-                        {{ formatCurrency(slotProps.data.harga_jual) }}
-                    </template>
-                </Column>
+                <template v-if="isOwner">
+                    <Column
+                        field="harga_jual"
+                        header="Harga Jual"
+                        sortable
+                        style="min-width: 8rem"
+                    >
+                        <template #body="slotProps">
+                            {{ formatCurrency(slotProps.data.harga_jual) }}
+                        </template>
+                    </Column>
+                </template>
 
                 <Column
                     field="brand"
@@ -455,9 +487,10 @@ function deleteSelectedProducts() {
                             outlined
                             rounded
                             class="mr-2"
-                            @click="createPenjualan(slotProps.data)"
+                            @click="openPenjualanDialog(slotProps.data)"
                             :disabled="slotProps.data.status === 'terjual'"
                         />
+                        <template v-if="isOwner">
                         <Button
                             icon="pi pi-pencil"
                             outlined
@@ -465,6 +498,7 @@ function deleteSelectedProducts() {
                             class="mr-2"
                             @click="editProduct(slotProps.data)"
                         />
+                        </template>
                         <Button
                             icon="pi pi-trash"
                             outlined
@@ -626,6 +660,50 @@ function deleteSelectedProducts() {
                     @click="hideDialog"
                 />
                 <Button label="Save" icon="pi pi-check" @click="saveProduct" />
+            </template>
+        </Dialog>
+
+        <Dialog
+            v-model:visible="penjualanDialog"
+            :style="{ width: '450px' }"
+            header="Harga Jual"
+            :modal="true"
+        >
+            <div class="flex flex-col gap-6">
+                <div>
+                    <label for="harga_jual" class="block font-bold mb-3"
+                        >Harga Jual</label
+                    >
+                    <InputNumber
+                        id="harga_jual"
+                        v-model="product.harga_jual"
+                        required
+                        mode="currency"
+                        currency="IDR"
+                        locale="id-ID"
+                        fluid
+                        :invalid="submitted && !product.harga_jual"
+                    />
+                    <small
+                        v-if="submitted && !product.harga_jual"
+                        class="text-red-500"
+                        >Harga Jual is required.</small
+                    >
+                </div>
+            </div>
+
+            <template #footer>
+                <Button
+                    label="Cancel"
+                    icon="pi pi-times"
+                    text
+                    @click="hideDialog"
+                />
+                <Button
+                    label="Save"
+                    icon="pi pi-check"
+                    @click="createPenjualan"
+                />
             </template>
         </Dialog>
 

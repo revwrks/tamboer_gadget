@@ -5,9 +5,9 @@ import { fileURLToPath, URL } from "node:url";
 import { PrimeVueResolver } from "@primevue/auto-import-resolver";
 import vue from "@vitejs/plugin-vue";
 import Components from "unplugin-vue-components/vite";
-import {internalIpV4} from 'internal-ip';
+import { internalIpV4 } from "internal-ip";
 
-const localIp = internalIpV4();  // Get local IP asynchronously
+const localIp = internalIpV4(); // Get local IP asynchronously
 
 export default defineConfig({
     optimizeDeps: {
@@ -16,14 +16,25 @@ export default defineConfig({
     build: {
         outDir: "dist",
         rollupOptions: {
-            input: "resources/js/app.js",
+            output: {
+                // Ensure proper module system is used
+                entryFileNames: `assets/[name].[hash].js`,
+                chunkFileNames: `assets/[name].[hash].js`,
+                assetFileNames: `assets/[name].[hash].[ext]`,
+            },
         },
+        manifest: true, // Generate manifest for proper asset loading in Laravel
     },
     server: {
-        host:'localhost', // fallback to localhost if no IP found
+        host: "192.168.1.8", // fallback to localhost if no IP found
         port: 5173, // Ensure this matches the port where Vite is running
         changeOrigin: true,
         secure: false,
+        disableHostCheck: true,
+        strictPort: true, // Use the specified port without trying different ones
+        watch: {
+            usePolling: true, // Sometimes required for certain dev environments (WSL, Docker, etc.)
+        },
     },
     plugins: [
         laravel({

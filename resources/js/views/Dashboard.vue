@@ -128,11 +128,5 @@ watch([getPrimary, getSurface, isDarkTheme], () => {
                 </div>
             </div>
         </div>
-        <div class="col-span-12 xl:col-span-6">
-            <div class="card">
-                <div class="font-semibold text-xl mb-4">Revenue Stream</div>
-                <Chart type="bar" :data="chartData" :options="chartOptions" class="h-80" />
-            </div>
-        </div>
     </div>
 </template>
