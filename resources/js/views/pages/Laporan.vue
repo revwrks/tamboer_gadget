@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, onMounted, onUnmounted } from "vue";
 import axios from "axios";
 import { useToast } from "primevue/usetoast";
 import InputText from "primevue/inputtext";
@@ -12,7 +12,9 @@ const selectedReport = ref(null);
 const filters = ref({
     global: { value: null, matchMode: "contains" },
 });
-const currentMonth = ref(new Date().toLocaleString("id-ID", { month: "long", year: "numeric" }));
+const currentMonth = ref(
+    new Date().toLocaleString("id-ID", { month: "long", year: "numeric" }),
+);
 
 const fetchReportData = async () => {
     try {
@@ -23,7 +25,21 @@ const fetchReportData = async () => {
     }
 };
 
-onMounted(fetchReportData);
+// Start polling when component is mounted
+
+const intervalId = ref();
+
+onMounted(() => {
+    fetchReportData(); // Initial fetch
+    intervalId.value = setInterval(fetchReportData, 10000); // Poll every 10 seconds
+});
+
+// Clear the interval when the component is destroyed
+onUnmounted(() => {
+    if (intervalId.value) {
+        clearInterval(intervalId.value);
+    }
+});
 
 const toast = useToast();
 
@@ -47,7 +63,9 @@ function handleMonthChange(newMonth) {
 
 <template>
     <div class="card">
-        <h2 class="text-xl font-bold mb-4">Monthly Sales Report - {{ currentMonth }}</h2>
+        <h2 class="text-xl font-bold mb-4">
+            Monthly Sales Report - {{ currentMonth }}
+        </h2>
 
         <DataTable
             ref="dt"

@@ -3,7 +3,7 @@ import { FilterMatchMode } from "@primevue/core/api";
 import axios from "axios";
 import Calendar from "primevue/calendar";
 import { useToast } from "primevue/usetoast";
-import { onMounted, ref, computed } from "vue";
+import { onMounted, onUnmounted, ref, computed } from "vue";
 
 const filters = ref({
     global: { value: null, matchMode: FilterMatchMode.CONTAINS }, // Global filter setup
@@ -20,13 +20,28 @@ const fetchPenjualan = async () => {
     }
 };
 
-onMounted(fetchPenjualan);
+// Start polling when component is mounted
+
+const intervalId = ref();
+
+onMounted(() => {
+    fetchPenjualan(); // Initial fetch
+    intervalId.value = setInterval(fetchPenjualan, 10000); // Poll every 10 seconds
+});
+
+// Clear the interval when the component is destroyed
+onUnmounted(() => {
+    if (intervalId.value) {
+        clearInterval(intervalId.value);
+    }
+});
 
 const toast = useToast();
 const dt = ref();
 const penjualanDialog = ref(false);
 const penjualanItem = ref({});
 const selectedPenjualan = ref();
+const deleteProductDialog = ref(false);
 
 const filteredData = computed(() => {
     const filterValue = filters.value.global.value?.toLowerCase() || "";
@@ -37,7 +52,10 @@ const filteredData = computed(() => {
             item.stok_hp.brand.toLowerCase().includes(filterValue) ||
             item.stok_hp.nama.toLowerCase().includes(filterValue) ||
             item.stok_hp.warna.toLowerCase().includes(filterValue) ||
-            item.stok_hp.harga_masuk.toString().toLowerCase().includes(filterValue) ||
+            item.stok_hp.harga_masuk
+                .toString()
+                .toLowerCase()
+                .includes(filterValue) ||
             item.harga_jual.toString().toLowerCase().includes(filterValue) ||
             item.users.nama.toLowerCase().includes(filterValue)
         );
@@ -116,6 +134,72 @@ function findIndexById(id) {
 
     return index;
 }
+function confirmDeletePenjualan(item) {
+    penjualanItem.value = item;
+    deleteProductDialog.value = true;
+}
+
+function deletePenjualan() {
+    axios
+        .delete(`/api/penjualan/${penjualanItem.value.id_penjualan}`)
+        .then(() => {
+            penjualan.value = penjualan.value.filter(
+                (val) => val.id_penjualan !== penjualanItem.value.id_penjualan,
+            );
+            fetchPenjualan(); // Refresh data after deletion
+            toast.add({
+                severity: "success",
+                summary: "Successful",
+                detail: "Penjualan Deleted",
+                life: 3000,
+            });
+        })
+        .catch((error) => {
+            toast.add({
+                severity: "error",
+                summary: "Error",
+                detail: "Failed to delete penjualan",
+                life: 3000,
+            });
+        });
+
+    deleteProductDialog.value = false;
+    penjualanItem.value = {}; // Reset form
+}
+
+function confirmDeleteSelected() {
+    deleteProductsDialog.value = true;
+}
+
+function deleteSelectedProducts() {
+    const ids = selectedProducts.value.map((product) => product.id_stock);
+    const requests = ids.map((id) => axios.delete(`/api/stocks/${id}`));
+
+    Promise.all(requests)
+        .then(() => {
+            products.value = products.value.filter(
+                (val) => !ids.includes(val.id_stock),
+            );
+            fetchProducts(); // Refresh data after product update
+            toast.add({
+                severity: "success",
+                summary: "Successful",
+                detail: "Products Deleted",
+                life: 3000,
+            });
+        })
+        .catch((error) => {
+            toast.add({
+                severity: "error",
+                summary: "Error",
+                detail: "Failed to delete selected products",
+                life: 3000,
+            });
+        });
+
+    deleteProductsDialog.value = false;
+    selectedProducts.value = null;
+}
 </script>
 
 <template>
@@ -128,7 +212,9 @@ function findIndexById(id) {
                         icon="pi pi-trash"
                         severity="secondary"
                         @click="confirmDeleteSelected"
-                        :disabled="!selectedPenjualan || !selectedPenjualan.length"
+                        :disabled="
+                            !selectedPenjualan || !selectedPenjualan.length
+                        "
                     />
                 </template>
             </Toolbar>
@@ -146,7 +232,9 @@ function findIndexById(id) {
                 currentPageReportTemplate="Showing {first} to {last} of {totalRecords} penjualan"
             >
                 <template #header>
-                    <div class="flex flex-wrap gap-2 items-center justify-between">
+                    <div
+                        class="flex flex-wrap gap-2 items-center justify-between"
+                    >
                         <h4 class="m-0">Manage Penjualan</h4>
                         <InputText
                             v-model="filters.global.value"
@@ -159,21 +247,29 @@ function findIndexById(id) {
                 <!-- Tanggal Terjual -->
                 <Column field="tanggal" header="Tanggal Terjual" sortable>
                     <template #body="slotProps">
-                        {{ new Date(slotProps.data.tanggal).toLocaleDateString("id-ID") }}
+                        {{
+                            new Date(slotProps.data.tanggal).toLocaleDateString(
+                                "id-ID",
+                            )
+                        }}
                     </template>
                 </Column>
 
                 <!-- Sales -->
                 <Column field="users.nama" header="Sales" sortable>
-                    {{ slotProps.data.users.nama || 'Unknown' }}</Column>
+                    {{ slotProps.data.users.nama || "Unknown" }}</Column
+                >
 
                 <!-- Stocks Details -->
                 <Column field="stok_hp.nama" header="Nama HP" sortable>
-                    {{ slotProps.data.stok_hp.nama }}</Column>
+                    {{ slotProps.data.stok_hp.nama }}</Column
+                >
                 <Column field="stok_hp.warna" header="Warna" sortable>
-                    {{ slotProps.data.stok_hp.warna }}</Column>
+                    {{ slotProps.data.stok_hp.warna }}</Column
+                >
                 <Column field="stok_hp.imei" header="IMEI" sortable>
-                    {{ slotProps.data.stok_hp.imei }}</Column>
+                    {{ slotProps.data.stok_hp.imei }}</Column
+                >
 
                 <!-- Harga Jual -->
                 <Column field="harga_jual" header="Harga Jual" sortable>
@@ -212,14 +308,24 @@ function findIndexById(id) {
             :modal="true"
         >
             <div class="flex flex-col gap-6">
-                <!-- Display existing fields for editing the sale -->
-                <div>
-                    <label for="tanggal" class="block font-bold mb-3">Tanggal Terjual</label>
-                    <Calendar id="tanggal" v-model.trim="penjualanItem.tanggal" required fluid />
+                <!-- Disable and hide the 'tanggal' field if editing -->
+                <div v-if="!penjualanItem.id_penjualan">
+                    <label for="tanggal" class="block font-bold mb-3"
+                        >Tanggal Terjual</label
+                    >
+                    <Calendar
+                        id="tanggal"
+                        v-model.trim="penjualanItem.tanggal"
+                        required
+                        fluid
+                        :disabled="penjualanItem.id_penjualan ? true : false"
+                    />
                 </div>
 
                 <div>
-                    <label for="harga_jual" class="block font-bold mb-3">Harga Jual</label>
+                    <label for="harga_jual" class="block font-bold mb-3"
+                        >Harga Jual</label
+                    >
                     <InputNumber
                         id="harga_jual"
                         v-model="penjualanItem.harga_jual"
@@ -239,7 +345,67 @@ function findIndexById(id) {
                     text
                     @click="hideDialog"
                 />
-                <Button label="Save" icon="pi pi-check" @click="savePenjualan" />
+                <Button
+                    label="Save"
+                    icon="pi pi-check"
+                    @click="savePenjualan"
+                />
+            </template>
+        </Dialog>
+
+        <Dialog
+            v-model:visible="deleteProductDialog"
+            :style="{ width: '450px' }"
+            header="Confirm"
+            :modal="true"
+        >
+            <div class="flex items-center gap-4">
+                <i class="pi pi-exclamation-triangle !text-3xl" />
+                <span v-if="penjualanItem"
+                    >Are you sure you want to delete this sale?</span
+                >
+            </div>
+            <template #footer>
+                <Button
+                    label="No"
+                    icon="pi pi-times"
+                    text
+                    @click="deleteProductDialog = false"
+                />
+                <Button
+                    label="Yes"
+                    icon="pi pi-check"
+                    @click="deletePenjualan"
+                />
+            </template>
+        </Dialog>
+
+        <Dialog
+            v-model:visible="deleteProductsDialog"
+            :style="{ width: '450px' }"
+            header="Confirm"
+            :modal="true"
+        >
+            <div class="flex items-center gap-4">
+                <i class="pi pi-exclamation-triangle !text-3xl" />
+                <span v-if="product"
+                    >Are you sure you want to delete the selected
+                    products?</span
+                >
+            </div>
+            <template #footer>
+                <Button
+                    label="No"
+                    icon="pi pi-times"
+                    text
+                    @click="deleteProductsDialog = false"
+                />
+                <Button
+                    label="Yes"
+                    icon="pi pi-check"
+                    text
+                    @click="deleteSelectedProducts"
+                />
             </template>
         </Dialog>
     </div>

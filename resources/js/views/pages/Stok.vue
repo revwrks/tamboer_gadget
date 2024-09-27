@@ -3,7 +3,7 @@ import { FilterMatchMode } from "@primevue/core/api";
 import axios from "axios";
 import Calendar from "primevue/calendar";
 import { useToast } from "primevue/usetoast";
-import { onMounted, ref, computed } from "vue";
+import { onMounted, onUnmounted, ref, computed } from "vue";
 
 const filters = ref({
     global: { value: null, matchMode: FilterMatchMode.CONTAINS }, // Global filter setup
@@ -20,9 +20,21 @@ const fetchProducts = async () => {
     }
 };
 
+// Start polling when component is mounted
+
+const intervalId = ref();
+
 onMounted(() => {
     fetchUserData();
-    fetchProducts();
+    fetchProducts(); // Initial fetch
+    intervalId.value = setInterval(fetchProducts, 10000); // Poll every 10 seconds
+});
+
+// Clear the interval when the component is destroyed
+onUnmounted(() => {
+    if (intervalId.value) {
+        clearInterval(intervalId.value);
+    }
 });
 
 const user = ref({});
@@ -37,18 +49,18 @@ const penjualanDialog = ref(false); // New modal for harga jual input
 
 // Fetch user data to determine the level
 const fetchUserData = async () => {
-  try {
-    // Assuming the user ID (token) is stored in localStorage
-    const id_user = localStorage.getItem("token");
+    try {
+        // Assuming the user ID (token) is stored in localStorage
+        const id_user = localStorage.getItem("token");
 
-    // Fetch user data based on their ID
-    const response = await axios.get(`/api/users/${id_user}`);
+        // Fetch user data based on their ID
+        const response = await axios.get(`/api/users/${id_user}`);
 
-    // Set the user data
-    user.value = response.data;
-  } catch (error) {
-    console.error("Error fetching user data:", error);
-  }
+        // Set the user data
+        user.value = response.data;
+    } catch (error) {
+        console.error("Error fetching user data:", error);
+    }
 };
 
 const filteredData = computed(() => {
@@ -491,13 +503,13 @@ function deleteSelectedProducts() {
                             :disabled="slotProps.data.status === 'terjual'"
                         />
                         <template v-if="isOwner">
-                        <Button
-                            icon="pi pi-pencil"
-                            outlined
-                            rounded
-                            class="mr-2"
-                            @click="editProduct(slotProps.data)"
-                        />
+                            <Button
+                                icon="pi pi-pencil"
+                                outlined
+                                rounded
+                                class="mr-2"
+                                @click="editProduct(slotProps.data)"
+                            />
                         </template>
                         <Button
                             icon="pi pi-trash"

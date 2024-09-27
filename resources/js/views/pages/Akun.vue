@@ -2,7 +2,7 @@
 import { FilterMatchMode } from "@primevue/core/api";
 import axios from "axios";
 import { useToast } from "primevue/usetoast";
-import { onMounted, ref, computed } from "vue";
+import { onMounted, onUnmounted, ref, computed } from "vue";
 
 const filters = ref({
     global: { value: null, matchMode: FilterMatchMode.CONTAINS },
@@ -19,7 +19,21 @@ const fetchUsers = async () => {
     }
 };
 
-onMounted(fetchUsers);
+// Start polling when component is mounted
+
+const intervalId = ref();
+
+onMounted(() => {
+    fetchUsers(); // Initial fetch
+    intervalId.value = setInterval(fetchUsers, 10000); // Poll every 10 seconds
+});
+
+// Clear the interval when the component is destroyed
+onUnmounted(() => {
+    if (intervalId.value) {
+        clearInterval(intervalId.value);
+    }
+});
 
 const toast = useToast();
 const dt = ref();
@@ -64,7 +78,7 @@ function saveUser() {
         // Prepare the user data to be sent
         const userData = {
             ...user.value,
-            level: user.value.level.value,  // Send only the 'value' part of level
+            level: user.value.level.value, // Send only the 'value' part of level
         };
 
         if (user.value.id_user) {
@@ -119,7 +133,6 @@ function saveUser() {
         user.value = {};
     }
 }
-
 
 function editUser(usr) {
     user.value = { ...usr };
