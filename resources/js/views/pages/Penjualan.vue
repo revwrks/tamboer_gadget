@@ -85,7 +85,7 @@ function editPenjualan(item) {
     penjualanDialog.value = true;
 }
 
-function hideDialog() {
+function hideDialogPenjualan() {
     penjualanDialog.value = false;
     submitted.value = false;
 }
@@ -343,7 +343,7 @@ function deleteSelectedProducts() {
                     label="Cancel"
                     icon="pi pi-times"
                     text
-                    @click="hideDialog"
+                    @click="hideDialogPenjualan"
                 />
                 <Button
                     label="Save"

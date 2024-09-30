@@ -10,7 +10,6 @@ import { internalIpV4 } from "internal-ip";
 const localIp = internalIpV4(); // Get local IP asynchronously
 
 export default defineConfig({
-    base:"./",
     optimizeDeps: {
         noDiscovery: true,
     },
