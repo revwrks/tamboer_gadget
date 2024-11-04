@@ -235,7 +235,7 @@ function deleteSelectedProducts() {
                     <div
                         class="flex flex-wrap gap-2 items-center justify-between"
                     >
-                        <h4 class="m-0">Manage Penjualan</h4>
+                        <h4 class="m-3 font-bold">Manajemen Penjualan</h4>
                         <InputText
                             v-model="filters.global.value"
                             placeholder="Search..."

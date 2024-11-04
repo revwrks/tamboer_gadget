@@ -26,7 +26,7 @@ export default defineConfig({
         manifest: true, // Generate manifest for proper asset loading in Laravel
     },
     server: {
-        host: "192.168.97.197", // Ganti ke ip local di bagian 192.168.1.8, angka di belakang gausah
+        host: "192.168.254.197", // Ganti ke ip local di bagian 192.168.1.8, angka di belakang gausah
         port: 5173, // Ensure this matches the port where Vite is running
         changeOrigin: true,
         secure: false,

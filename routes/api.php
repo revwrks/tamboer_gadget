@@ -30,7 +30,8 @@ Route::get('/penjualan/{id}', [CPenjualan::class, 'show']);
 Route::put('/penjualan/{id}', [CPenjualan::class, 'update']);
 Route::delete('/penjualan/{id}', [CPenjualan::class, 'destroy']);
 
-Route::get('/report', [CLaporan::class, 'getMonthlyReport']);
+Route::get('/report', [CLaporan::class, 'getMonthlyReport'])->middleware('throttle:60,1'); // 60 requests per minute
+Route::get('/report/{year?}/{month?}', [CLaporan::class, 'getMonthlyReport']);
 
 Route::get('/user', function (Request $request) {
     return $request->user();

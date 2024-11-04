@@ -24,11 +24,25 @@ class MStock extends Model
     protected $primaryKey = 'id_stock';
 
     /**
-     * Enable timestamps
+     * Indicates if the IDs are auto-incrementing.
      *
      * @var bool
      */
-    public $timestamps = false; // Set to false if you don't want to use timestamps
+    public $incrementing = true;
+
+    /**
+     * The "type" of the auto-incrementing ID.
+     *
+     * @var string
+     */
+    protected $keyType = 'int';
+
+    /**
+     * Enable timestamps.
+     *
+     * @var bool
+     */
+    public $timestamps = false; // Disable timestamps as the table has 'created_at' and 'updated_at'
 
     /**
      * The attributes that are mass assignable.
@@ -36,13 +50,14 @@ class MStock extends Model
      * @var array
      */
     protected $fillable = [
-        'tanggal', 
-        'imei', 
-        'brand', 
-        'nama', 
-        'warna', 
-        'harga_masuk', 
-        'harga_jual', 
+        'tanggal',
+        'imei',
+        'brand',
+        'nama',
+        'warna',
+        'harga_masuk',
+        'harga_jual',
+        'id_sales',
         'status'
     ];
 
@@ -53,8 +68,17 @@ class MStock extends Model
      */
     protected $casts = [
         'tanggal' => 'date',
+        'harga_masuk' => 'float',
+        'harga_jual' => 'float',
+        'id_sales' => 'integer',
         'status' => 'string',
     ];
+
+    /**
+     * Define the relationship with the user (salesperson).
+     */
+    public function sales()
+    {
+        return $this->belongsTo(MUsers::class, 'id_sales', 'id_user')->withDefault();
+    }
 }
-
-

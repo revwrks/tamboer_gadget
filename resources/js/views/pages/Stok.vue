@@ -4,6 +4,7 @@ import axios from "axios";
 import Calendar from "primevue/calendar";
 import { useToast } from "primevue/usetoast";
 import { onMounted, onUnmounted, ref, computed } from "vue";
+import * as XLSX from "xlsx";
 
 const filters = ref({
     global: { value: null, matchMode: FilterMatchMode.CONTAINS }, // Global filter setup
@@ -74,7 +75,8 @@ const filteredData = computed(() => {
             item.warna.toLowerCase().includes(filterValue) ||
             item.harga_masuk.toLowerCase().includes(filterValue) ||
             item.harga_jual.toLowerCase().includes(filterValue) ||
-            item.status.toLowerCase().includes(filterValue)
+            item.status.toLowerCase().includes(filterValue) ||
+            item.sales.nama.toLowerCase().includes(filterValue)
         );
     });
 });
@@ -142,7 +144,14 @@ function saveProduct() {
             // Update existing product
             axios
                 .put(`/api/stocks/${product.value.id_stock}`, {
-                    ...product.value,
+                    tanggal: product.value.tanggal,
+                    imei: product.value.imei,
+                    brand: product.value.brand,
+                    nama: product.value.nama,
+                    warna: product.value.warna,
+                    harga_masuk: product.value.harga_masuk,
+                    harga_jual: product.value.harga_jual,
+                    id_sales: product.value.id_sales || null, // Allow nullable id_sales
                     status: product.value.status || "ada", // Keep status if exists, otherwise default to 'ada'
                 })
                 .then(() => {
@@ -160,22 +169,29 @@ function saveProduct() {
                     toast.add({
                         severity: "error",
                         summary: "Error",
-                        detail: "Failed to update product",
+                        detail: error.response?.data?.error || "Failed to update product",
                         life: 3000,
                     });
                 });
         } else {
-            // Create new product (set id to null to allow auto-increment)
+            const id_user = localStorage.getItem("token");
+            // Create new product
             axios
                 .post("/api/stocks", {
-                    ...product.value,
-                    id: null, // Laravel will auto-increment this field
+                    tanggal: product.value.tanggal,
+                    imei: product.value.imei,
+                    brand: product.value.brand,
+                    nama: product.value.nama,
+                    warna: product.value.warna,
+                    harga_masuk: product.value.harga_masuk,
+                    harga_jual: product.value.harga_jual,
+                    id_sales: id_user || null, // Allow nullable id_sales
                     status: "ada", // Default status to 'ada'
                 })
                 .then((response) => {
-                    product.value.id_stock = response.data.stok_hp.id_stock; // Assuming `id` is returned in the response
+                    product.value.id_stock = response.data.stok_hp.id_stock; // Assuming id_stock is returned in the response
                     products.value.push(product.value);
-                    fetchProducts(); // Refresh data after product update
+                    fetchProducts(); // Refresh data after product creation
                     toast.add({
                         severity: "success",
                         summary: "Successful",
@@ -187,25 +203,17 @@ function saveProduct() {
                     toast.add({
                         severity: "error",
                         summary: "Error",
-                        detail: "Failed to create product",
+                        detail: error.response?.data?.error || "Failed to create product",
                         life: 3000,
                     });
                 });
         }
 
         productDialog.value = false;
-        product.value = {};
+        product.value = {}; // Reset the form
     }
 }
 
-// Custom sorting function for sorting by status
-function customSort(event) {
-    const statusPriority = { ada: 1, terjual: 2 }; // Lower number means higher priority (i.e., 'ada' comes first)
-
-    event.data.sort((a, b) => {
-        return statusPriority[a.status] - statusPriority[b.status];
-    });
-}
 
 // Open harga jual dialog for sales and submit penjualan
 function openPenjualanDialog(prod) {
@@ -311,8 +319,88 @@ function findIndexById(id) {
     return index;
 }
 
-function exportCSV() {
-    dt.value.exportCSV();
+function exportToXLSX() {
+    if (Array.isArray(products.value) && products.value.length > 0) {
+        // Add headers
+        const headers = [
+            "Tanggal",
+            "Status",
+            "Nama",
+            "Penanggungjawab", // Salesperson's name
+            "Warna",
+            "Harga Masuk",
+            ...(isOwner ? ["Harga Jual"] : []),
+            "Brand",
+            "IMEI"
+        ];
+
+        // Map the products data for XLSX export
+        const exportData = products.value.map((product) => {
+            return {
+                "Tanggal": new Date(product.tanggal).toLocaleDateString("id-ID"),
+                "Status": getStatusLabel(product.status),
+                "Nama": product.nama,
+                "Penanggungjawab": product.sales?.nama || "N/A", // Handle missing sales data
+                "Warna": product.warna,
+                "Harga Masuk": formatCurrency(product.harga_masuk),
+                ...(isOwner && { "Harga Jual": formatCurrency(product.harga_jual) }),
+                "Brand": product.brand,
+                "IMEI": product.imei,
+            };
+        });
+
+        // Create a new workbook and worksheet
+        const worksheet = XLSX.utils.json_to_sheet(exportData, { header: headers });
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Products");
+
+        // Adjust column widths for better display
+        const columnWidths = [
+            { wch: 15 }, // "Tanggal"
+            { wch: 15 }, // "Status"
+            { wch: 20 }, // "Nama"
+            { wch: 20 }, // "Penanggungjawab"
+            { wch: 15 }, // "Warna"
+            { wch: 15 }, // "Harga Masuk"
+            ...(isOwner ? [{ wch: 15 }] : []), // "Harga Jual" (if owner)
+            { wch: 15 }, // "Brand"
+            { wch: 20 }  // "IMEI"
+        ];
+
+        worksheet["!cols"] = columnWidths; // Apply column widths
+
+        // Trigger file download
+        const excelFile = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+        const blob = new Blob([excelFile], { type: "application/octet-stream" });
+        const link = document.createElement("a");
+        const url = URL.createObjectURL(blob);
+        link.href = url;
+        link.download = "product_report.xlsx"; // Set the filename
+        link.click();
+        URL.revokeObjectURL(url); // Clean up the URL after download
+    } else {
+        console.error("No products available for export.");
+        toast.add({
+            severity: 'warn',
+            summary: 'Warning',
+            detail: 'No products available to export.',
+            life: 3000
+        });
+    }
+}
+
+// Helper function to get a color based on the salesperson
+function getColorForSales(salesName) {
+    // Assign a different color code based on the salesperson
+    const colors = {
+        "rev": "FFFF00", // Yellow
+        "reva": "FF0000", // Red
+        "Salesperson 3": "00FF00", // Green
+        "N/A": "FFFFFF",           // White for no sales
+        // Add more colors for different salespeople
+    };
+
+    return colors[salesName] || "FFFFFF"; // Default to white if salesperson is unknown
 }
 
 function confirmDeleteSelected() {
@@ -378,7 +466,7 @@ function deleteSelectedProducts() {
                         label="Export"
                         icon="pi pi-upload"
                         severity="secondary"
-                        @click="exportCSV($event)"
+                        @click="exportToXLSX($event)"
                     />
                 </template>
             </Toolbar>
@@ -394,16 +482,12 @@ function deleteSelectedProducts() {
                 paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
                 :rowsPerPageOptions="[5, 10, 25]"
                 currentPageReportTemplate="Showing {first} to {last} of {totalRecords} products"
-                sortField="status"
-                :sortOrder="1"
-                :customSort="true"
-                @sort="customSort"
             >
                 <template #header>
                     <div
                         class="flex flex-wrap gap-2 items-center justify-between"
                     >
-                        <h4 class="m-0">Manage Products</h4>
+                        <h1 class="m-3 font-bold">Manajemen Stok</h1>
                         <IconField>
                             <InputIcon>
                                 <i class="pi pi-search" />
@@ -415,6 +499,7 @@ function deleteSelectedProducts() {
                         </IconField>
                     </div>
                 </template>
+                
                 <Column
                     selectionMode="multiple"
                     style="width: 3rem"
@@ -447,10 +532,15 @@ function deleteSelectedProducts() {
 
                 <Column
                     field="nama"
-                    header="Nama"
+                    header="Tipe"
                     sortable
                     style="min-width: 12rem"
                 ></Column>
+
+                <!-- Sales -->
+                <!-- <Column field="sales.nama" header="Sales" sortable>
+                    {{ slotProps.data.sales.nama || "Unknown" }}</Column
+                > -->
 
                 <Column
                     field="warna"
@@ -497,7 +587,7 @@ function deleteSelectedProducts() {
                     style="min-width: 12rem"
                 ></Column>
 
-                <Column :exportable="false" style="min-width: 12rem">
+                <Column :exportable="false" style="min-width: 12rem" header="Action">
                     <template #body="slotProps">
                         <Button
                             icon="pi pi-money-bill"
@@ -531,7 +621,7 @@ function deleteSelectedProducts() {
         <Dialog
             v-model:visible="productDialog"
             :style="{ width: '450px' }"
-            header="Product Details"
+            header="Detail Smartphone"
             :modal="true"
         >
             <div class="flex flex-col gap-6">

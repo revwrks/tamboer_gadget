@@ -269,7 +269,7 @@ function deleteSelectedUsers() {
                     <div
                         class="flex flex-wrap gap-2 items-center justify-between"
                     >
-                        <h4 class="m-0">Manage Users</h4>
+                        <h4 class="m-3 font-bold">Manajemen Akun</h4>
                         <IconField>
                             <InputIcon>
                                 <i class="pi pi-search" />
@@ -315,7 +315,7 @@ function deleteSelectedUsers() {
         <Dialog
             v-model:visible="userDialog"
             :style="{ width: '450px' }"
-            header="User Details"
+            header="Detail User"
             :modal="true"
         >
             <div class="flex flex-col gap-6">
