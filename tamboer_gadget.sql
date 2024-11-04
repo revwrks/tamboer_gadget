@@ -11,7 +11,7 @@
  Target Server Version : 100432
  File Encoding         : 65001
 
- Date: 12/09/2024 20:37:35
+ Date: 20/10/2024 17:38:22
 */
 
 SET NAMES utf8mb4;
@@ -29,6 +29,14 @@ CREATE TABLE `cache`  (
   `updated_at` timestamp(0) NULL DEFAULT NULL,
   PRIMARY KEY (`key`) USING BTREE
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Records of cache
+-- ----------------------------
+INSERT INTO `cache` VALUES ('b79612f3a21d34ace4a9a2235bd3ba44df28dd3e', 'i:1;', 1728134653, NULL, NULL);
+INSERT INTO `cache` VALUES ('b79612f3a21d34ace4a9a2235bd3ba44df28dd3e:timer', 'i:1728134653;', 1728134653, NULL, NULL);
+INSERT INTO `cache` VALUES ('f55b367f75a7e4ad9ad7e3f5cf968fac7715c423', 'i:5;', 1728846140, NULL, NULL);
+INSERT INTO `cache` VALUES ('f55b367f75a7e4ad9ad7e3f5cf968fac7715c423:timer', 'i:1728846140;', 1728846140, NULL, NULL);
 
 -- ----------------------------
 -- Table structure for cache_locks
@@ -168,13 +176,18 @@ CREATE TABLE `penjualan`  (
   INDEX `fk_sales`(`id_sales`) USING BTREE,
   CONSTRAINT `fk_sales` FOREIGN KEY (`id_sales`) REFERENCES `user` (`id_user`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `fk_stock` FOREIGN KEY (`id_stock`) REFERENCES `stok_hp` (`id_stock`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE = InnoDB AUTO_INCREMENT = 3 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 11 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Records of penjualan
 -- ----------------------------
 INSERT INTO `penjualan` VALUES (1, '2024-09-10', 1, 2, '10000000');
 INSERT INTO `penjualan` VALUES (2, '2024-09-10', 3, 1, '6500000');
+INSERT INTO `penjualan` VALUES (3, '2024-09-23', 16, 1, '3999000');
+INSERT INTO `penjualan` VALUES (7, '2024-09-28', 6, 1, '14000000');
+INSERT INTO `penjualan` VALUES (8, '2024-09-28', 11, 1, '10250000');
+INSERT INTO `penjualan` VALUES (9, '2024-09-28', 10, 2, '7750000');
+INSERT INTO `penjualan` VALUES (10, '2024-09-28', 9, 2, '12000000');
 
 -- ----------------------------
 -- Table structure for personal_access_tokens
@@ -217,10 +230,10 @@ CREATE TABLE `sessions`  (
 -- ----------------------------
 -- Records of sessions
 -- ----------------------------
-INSERT INTO `sessions` VALUES ('0mKJiJkyUDro71HHNRmycgf63VJHI6Xums8arIPQ', NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36', 'YTozOntzOjY6Il90b2tlbiI7czo0MDoiU0taU2pKTDFHaFNTeFRNbVZVRWppV1pvSTdPUklSZHYwbVB2T2k4diI7czo5OiJfcHJldmlvdXMiO2E6MTp7czozOiJ1cmwiO3M6MjE6Imh0dHA6Ly8xMjcuMC4wLjE6ODAwMCI7fXM6NjoiX2ZsYXNoIjthOjI6e3M6Mzoib2xkIjthOjA6e31zOjM6Im5ldyI7YTowOnt9fX0=', 1725972275, NULL, NULL);
-INSERT INTO `sessions` VALUES ('3DZUT9dEDH7EDjSrXVaTyLod2VidOfch5Xq5UN36', NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36', 'YTozOntzOjY6Il90b2tlbiI7czo0MDoiNjJJWkczbzU5VnEwMEVZT0dvanQzRnl6b2ZycjljTmVsQ1BTREI3biI7czo5OiJfcHJldmlvdXMiO2E6MTp7czozOiJ1cmwiO3M6MjE6Imh0dHA6Ly8xMjcuMC4wLjE6ODAwMCI7fXM6NjoiX2ZsYXNoIjthOjI6e3M6Mzoib2xkIjthOjA6e31zOjM6Im5ldyI7YTowOnt9fX0=', 1725996950, NULL, NULL);
-INSERT INTO `sessions` VALUES ('DYbIopAaSF4CHTK3S4Kk9KwKu4SMD1eih7lRi3dr', NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36', 'YTozOntzOjY6Il90b2tlbiI7czo0MDoiZkZPc29PbVZkVU9FeENtVDlsRDl3anFCdGJ1eUlOVTIyN3JCRThtTCI7czo5OiJfcHJldmlvdXMiO2E6MTp7czozOiJ1cmwiO3M6MjE6Imh0dHA6Ly8xMjcuMC4wLjE6ODAwMCI7fXM6NjoiX2ZsYXNoIjthOjI6e3M6Mzoib2xkIjthOjA6e31zOjM6Im5ldyI7YTowOnt9fX0=', 1725916398, NULL, NULL);
-INSERT INTO `sessions` VALUES ('uOusOntLhhvS1XVvUEYdxhBcexcgHg6Tz1zbe1jQ', NULL, '127.0.0.1', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36', 'YTozOntzOjY6Il90b2tlbiI7czo0MDoiR0Vyc0ZFZXJXS0h3cU5zRGVVUGJNV2xIQWF6OUhmR0w2U0I3ZjZFSSI7czo5OiJfcHJldmlvdXMiO2E6MTp7czozOiJ1cmwiO3M6MjE6Imh0dHA6Ly8xMjcuMC4wLjE6ODAwMCI7fXM6NjoiX2ZsYXNoIjthOjI6e3M6Mzoib2xkIjthOjA6e31zOjM6Im5ldyI7YTowOnt9fX0=', 1725945849, NULL, NULL);
+INSERT INTO `sessions` VALUES ('4xpSteisH3WrQLjVnT2wYbadRh8YqmuJSmYHHmPF', NULL, '192.168.117.197', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36', 'YTozOntzOjY6Il90b2tlbiI7czo0MDoiSmlsOG1JU05WQmdlTkZjYTNSeFA2ekI0OGRSa0o4dDRhemRCeUg5eiI7czo5OiJfcHJldmlvdXMiO2E6MTp7czozOiJ1cmwiO3M6NDE6Imh0dHA6Ly8xOTIuMTY4LjExNy4xOTc6ODAwMC9wYWdlcy9sYXBvcmFuIjt9czo2OiJfZmxhc2giO2E6Mjp7czozOiJvbGQiO2E6MDp7fXM6MzoibmV3IjthOjA6e319fQ==', 1728846116, NULL, NULL);
+INSERT INTO `sessions` VALUES ('ETQWQNXpra8PYBjgTO9fxPQqtB5ZVZPn4HD1LUCP', NULL, '192.168.97.197', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36', 'YTozOntzOjY6Il90b2tlbiI7czo0MDoiS1RLdE5MUnV3NVhzRzJyTGMzRG9NRXJpSmsyUDI1clpHbzhPM1NkWCI7czo5OiJfcHJldmlvdXMiO2E6MTp7czozOiJ1cmwiO3M6Mzc6Imh0dHA6Ly8xOTIuMTY4Ljk3LjE5Nzo4MDAwL3BhZ2VzL3N0b2siO31zOjY6Il9mbGFzaCI7YToyOntzOjM6Im9sZCI7YTowOnt9czozOiJuZXciO2E6MDp7fX19', 1727965999, NULL, NULL);
+INSERT INTO `sessions` VALUES ('JAt2kRsycjHee0C6A67YPG08Ct8tXoEo4IjmEP5s', NULL, '192.168.97.197', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36', 'YTozOntzOjY6Il90b2tlbiI7czo0MDoiVktzeHdaYmltc0VZTDRibTNlbzVzSDdacllyWGc5OWlkSThUTjB6QyI7czo5OiJfcHJldmlvdXMiO2E6MTp7czozOiJ1cmwiO3M6MjY6Imh0dHA6Ly8xOTIuMTY4Ljk3LjE5Nzo4MDAwIjt9czo2OiJfZmxhc2giO2E6Mjp7czozOiJvbGQiO2E6MDp7fXM6MzoibmV3IjthOjA6e319fQ==', 1728133823, NULL, NULL);
+INSERT INTO `sessions` VALUES ('Z0V0oaXbqXPcmwcVj9y3CrS3lWRRFgRvw50PAFrr', NULL, '192.168.97.197', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36', 'YTozOntzOjY6Il90b2tlbiI7czo0MDoiSU83ZVZGWjl3YjI3MXhMWnVTdnRXZ3d0bHZrSkNiNDNyMXRZR0hnRiI7czo5OiJfcHJldmlvdXMiO2E6MTp7czozOiJ1cmwiO3M6MzY6Imh0dHA6Ly8xOTIuMTY4Ljk3LjE5Nzo4MDAwL2Rhc2hib2FyZCI7fXM6NjoiX2ZsYXNoIjthOjI6e3M6Mzoib2xkIjthOjA6e31zOjM6Im5ldyI7YTowOnt9fX0=', 1727987214, NULL, NULL);
 
 -- ----------------------------
 -- Table structure for stok_hp
@@ -235,27 +248,37 @@ CREATE TABLE `stok_hp`  (
   `warna` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL,
   `harga_masuk` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL,
   `harga_jual` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL,
+  `id_sales` int(255) NULL DEFAULT NULL,
   `status` enum('ada','terjual') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL,
   `created_at` timestamp(0) NULL DEFAULT NULL,
   `updated_at` timestamp(0) NULL DEFAULT NULL,
-  PRIMARY KEY (`id_stock`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 17 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Dynamic;
+  PRIMARY KEY (`id_stock`) USING BTREE,
+  INDEX `sales_fk`(`id_sales`) USING BTREE,
+  CONSTRAINT `sales_fk` FOREIGN KEY (`id_sales`) REFERENCES `user` (`id_user`) ON DELETE SET NULL ON UPDATE SET NULL
+) ENGINE = InnoDB AUTO_INCREMENT = 28 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Records of stok_hp
 -- ----------------------------
-INSERT INTO `stok_hp` VALUES (1, '2024-09-01', '359759101234567', 'Samsung', 'Galaxy S21', 'Phantom Gray', '8000000', '10000000', 'terjual', NULL, NULL);
-INSERT INTO `stok_hp` VALUES (2, '2024-09-02', '860005033123456', 'Apple', 'iPhone 13', 'Starlight', '12000000', '15000000', 'ada', NULL, NULL);
-INSERT INTO `stok_hp` VALUES (3, '2024-09-03', '353755091234561', 'Xiaomi', 'Mi 11', 'Horizon Blue', '5000000', '6500000', 'terjual', NULL, NULL);
-INSERT INTO `stok_hp` VALUES (4, '2024-09-04', '352032102345678', 'Oppo', 'Find X3', 'Gloss Black', '7000000', '8500000', 'ada', NULL, NULL);
-INSERT INTO `stok_hp` VALUES (5, '2024-09-05', '356890100123456', 'Vivo', 'X70 Pro', 'Aurora Dawn', '9000000', '11500000', 'ada', NULL, NULL);
-INSERT INTO `stok_hp` VALUES (6, '2024-09-06', '357920107654321', 'Huawei', 'P50 Pro', 'Cocoa Gold', '10000000', '13000000', 'ada', NULL, NULL);
-INSERT INTO `stok_hp` VALUES (7, '2024-09-07', '354445100987654', 'OnePlus', '9 Pro', 'Morning Mist', '7500000', '9000000', 'ada', NULL, NULL);
-INSERT INTO `stok_hp` VALUES (8, '2024-09-08', '358265100654321', 'Sony', 'Xperia 5 III', 'Green', '8000000', '10000000', 'ada', NULL, NULL);
-INSERT INTO `stok_hp` VALUES (9, '2024-09-09', '358730105432167', 'Google', 'Pixel 6', 'Stormy Black', '8500000', '11000000', 'ada', NULL, NULL);
-INSERT INTO `stok_hp` VALUES (10, '2024-09-10', '354541098765432', 'Realme', 'GT 2 Pro', 'Paper White', '6000000', '7500000', 'ada', NULL, NULL);
-INSERT INTO `stok_hp` VALUES (11, '2024-09-05', '123456789012345', 'Samsung', 'Samsung Galaxy S22', 'Black', '8888888', '9999999', 'ada', '2024-09-05 03:15:07', '2024-09-05 03:15:07');
-INSERT INTO `stok_hp` VALUES (16, '2024-09-09', '869534070886351', 'Oppo', 'Oppo A3 Pro 5G 8/256', 'Moonlight Purple', '3200000', '3999000', 'ada', NULL, NULL);
+INSERT INTO `stok_hp` VALUES (1, '2024-09-01', '359759101234567', 'Samsung', 'Galaxy S21', 'Phantom Gray', '8000000', '10000000', 1, 'terjual', NULL, NULL);
+INSERT INTO `stok_hp` VALUES (3, '2024-09-03', '353755091234561', 'Xiaomi', 'Mi 11', 'Horizon Blue', '5000000', '6500000', 2, 'terjual', NULL, NULL);
+INSERT INTO `stok_hp` VALUES (6, '2024-09-06', '357920107654321', 'Huawei', 'P50 Pro', 'Cocoa Gold', '10000000', '13000000', 2, 'terjual', NULL, NULL);
+INSERT INTO `stok_hp` VALUES (7, '2024-09-07', '354445100987654', 'OnePlus', '9 Pro', 'Morning Mist', '7500000', '9000000', 2, 'ada', NULL, NULL);
+INSERT INTO `stok_hp` VALUES (8, '2024-09-08', '358265100654321', 'Sony', 'Xperia 5 III', 'Green', '8000000', '10000000', 2, 'ada', NULL, NULL);
+INSERT INTO `stok_hp` VALUES (9, '2024-09-09', '358730105432167', 'Google', 'Pixel 6', 'Stormy Black', '8500000', '11000000', 1, 'terjual', NULL, NULL);
+INSERT INTO `stok_hp` VALUES (10, '2024-09-10', '354541098765432', 'Realme', 'GT 2 Pro', 'Paper White', '6000000', '7500000', 2, 'terjual', NULL, NULL);
+INSERT INTO `stok_hp` VALUES (11, '2024-09-05', '123456789012345', 'Samsung', 'Samsung Galaxy S22', 'Black', '8888888', '9999999', 2, 'terjual', '2024-09-05 03:15:07', '2024-09-05 03:15:07');
+INSERT INTO `stok_hp` VALUES (16, '2024-09-09', '869534070886351', 'Oppo', 'Oppo A3 Pro 5G 8/256', 'Moonlight Purple', '3200000', '3999000', 2, 'terjual', NULL, NULL);
+INSERT INTO `stok_hp` VALUES (17, '2024-09-20', '169708678610377', 'Samsung', 'Mi 11', 'Morning Mist', '5803987', '10617277', 1, 'ada', NULL, NULL);
+INSERT INTO `stok_hp` VALUES (18, '2024-09-30', '178593192201749', 'Realme', 'Pixel 6', 'Moonlight Purple', '10015371', '12496487', 2, 'ada', NULL, NULL);
+INSERT INTO `stok_hp` VALUES (19, '2024-09-25', '776948014857959', 'Xiaomi', '9 Pro', 'Phantom Gray', '5311467', '7492805', 1, 'ada', NULL, NULL);
+INSERT INTO `stok_hp` VALUES (20, '2024-09-17', '962655427070328', 'Google', '9 Pro', 'Green', '8102841', '10022974', 2, 'ada', NULL, NULL);
+INSERT INTO `stok_hp` VALUES (21, '2024-09-11', '411422666897584', 'Samsung', 'Xperia 5 III', 'Horizon Blue', '4129619', '5893767', 1, 'ada', NULL, NULL);
+INSERT INTO `stok_hp` VALUES (22, '2024-09-14', '971802334067535', 'Oppo', '9 Pro', 'Morning Mist', '9862855', '13346593', 2, 'ada', NULL, NULL);
+INSERT INTO `stok_hp` VALUES (23, '2024-09-01', '668325055156112', 'Sony', 'GT 2 Pro', 'Green', '10122502', '11396651', 2, 'ada', NULL, NULL);
+INSERT INTO `stok_hp` VALUES (24, '2024-09-13', '000875501348687', 'Realme', 'GT 2 Pro', 'Phantom Gray', '5402417', '7461014', 2, 'ada', NULL, NULL);
+INSERT INTO `stok_hp` VALUES (25, '2024-09-05', '596055848654033', 'Google', 'GT 2 Pro', 'Moonlight Purple', '5689667', '10192480', 2, 'ada', NULL, NULL);
+INSERT INTO `stok_hp` VALUES (27, '2024-10-03', '7283617256371829', 'Oppo', 'A60 8/258', 'Ungu Malam', '2900000', '3400000', 1, 'ada', NULL, NULL);
 
 -- ----------------------------
 -- Table structure for user
@@ -268,7 +291,7 @@ CREATE TABLE `user`  (
   `level` enum('owner','sales') CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL,
   `nama` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL DEFAULT NULL,
   PRIMARY KEY (`id_user`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 3 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 5 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Records of user
