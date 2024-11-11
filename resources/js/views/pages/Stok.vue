@@ -10,7 +10,7 @@ const filters = ref({
     global: { value: null, matchMode: FilterMatchMode.CONTAINS }, // Global filter setup
 });
 
-const products = ref();
+const products = ref([]);
 
 const fetchProducts = async () => {
     try {
@@ -20,6 +20,18 @@ const fetchProducts = async () => {
         console.error("Error fetching products:", error);
     }
 };
+
+const filteredProductsCount = computed(() => {
+    if (!filters.value.global.value) return products.value.length;
+
+    return products.value.filter((product) =>
+        Object.values(product).some((field) =>
+            String(field)
+                .toLowerCase()
+                .includes(filters.value.global.value.toLowerCase()),
+        ),
+    ).length;
+});
 
 // Start polling when component is mounted
 
@@ -169,7 +181,9 @@ function saveProduct() {
                     toast.add({
                         severity: "error",
                         summary: "Error",
-                        detail: error.response?.data?.error || "Failed to update product",
+                        detail:
+                            error.response?.data?.error ||
+                            "Failed to update product",
                         life: 3000,
                     });
                 });
@@ -203,7 +217,9 @@ function saveProduct() {
                     toast.add({
                         severity: "error",
                         summary: "Error",
-                        detail: error.response?.data?.error || "Failed to create product",
+                        detail:
+                            error.response?.data?.error ||
+                            "Failed to create product",
                         life: 3000,
                     });
                 });
@@ -213,7 +229,6 @@ function saveProduct() {
         product.value = {}; // Reset the form
     }
 }
-
 
 // Open harga jual dialog for sales and submit penjualan
 function openPenjualanDialog(prod) {
@@ -325,32 +340,36 @@ function exportToXLSX() {
         const headers = [
             "Tanggal",
             "Status",
-            "Nama",
+            "Tipe HP",
             "Penanggungjawab", // Salesperson's name
             "Warna",
             "Harga Masuk",
             ...(isOwner ? ["Harga Jual"] : []),
             "Brand",
-            "IMEI"
+            "IMEI",
         ];
 
         // Map the products data for XLSX export
         const exportData = products.value.map((product) => {
             return {
-                "Tanggal": new Date(product.tanggal).toLocaleDateString("id-ID"),
-                "Status": getStatusLabel(product.status),
-                "Nama": product.nama,
-                "Penanggungjawab": product.sales?.nama || "N/A", // Handle missing sales data
-                "Warna": product.warna,
+                Tanggal: new Date(product.tanggal).toLocaleDateString("id-ID"),
+                Status: getStatusLabel(product.status),
+                Nama: product.nama,
+                Penanggungjawab: product.sales?.nama || "N/A", // Handle missing sales data
+                Warna: product.warna,
                 "Harga Masuk": formatCurrency(product.harga_masuk),
-                ...(isOwner && { "Harga Jual": formatCurrency(product.harga_jual) }),
-                "Brand": product.brand,
-                "IMEI": product.imei,
+                ...(isOwner && {
+                    "Harga Jual": formatCurrency(product.harga_jual),
+                }),
+                Brand: product.brand,
+                IMEI: product.imei,
             };
         });
 
         // Create a new workbook and worksheet
-        const worksheet = XLSX.utils.json_to_sheet(exportData, { header: headers });
+        const worksheet = XLSX.utils.json_to_sheet(exportData, {
+            header: headers,
+        });
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Products");
 
@@ -364,14 +383,19 @@ function exportToXLSX() {
             { wch: 15 }, // "Harga Masuk"
             ...(isOwner ? [{ wch: 15 }] : []), // "Harga Jual" (if owner)
             { wch: 15 }, // "Brand"
-            { wch: 20 }  // "IMEI"
+            { wch: 20 }, // "IMEI"
         ];
 
         worksheet["!cols"] = columnWidths; // Apply column widths
 
         // Trigger file download
-        const excelFile = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
-        const blob = new Blob([excelFile], { type: "application/octet-stream" });
+        const excelFile = XLSX.write(workbook, {
+            bookType: "xlsx",
+            type: "array",
+        });
+        const blob = new Blob([excelFile], {
+            type: "application/octet-stream",
+        });
         const link = document.createElement("a");
         const url = URL.createObjectURL(blob);
         link.href = url;
@@ -381,10 +405,10 @@ function exportToXLSX() {
     } else {
         console.error("No products available for export.");
         toast.add({
-            severity: 'warn',
-            summary: 'Warning',
-            detail: 'No products available to export.',
-            life: 3000
+            severity: "warn",
+            summary: "Warning",
+            detail: "No products available to export.",
+            life: 3000,
         });
     }
 }
@@ -393,10 +417,10 @@ function exportToXLSX() {
 function getColorForSales(salesName) {
     // Assign a different color code based on the salesperson
     const colors = {
-        "rev": "FFFF00", // Yellow
-        "reva": "FF0000", // Red
+        rev: "FFFF00", // Yellow
+        reva: "FF0000", // Red
         "Salesperson 3": "00FF00", // Green
-        "N/A": "FFFFFF",           // White for no sales
+        "N/A": "FFFFFF", // White for no sales
         // Add more colors for different salespeople
     };
 
@@ -477,11 +501,16 @@ function deleteSelectedProducts() {
                 :value="products"
                 dataKey="id_stock"
                 :paginator="true"
-                :rows="10"
+                :rows="5"
                 :filters="filters"
+                :filteredValue="filteredProducts"
                 paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
                 :rowsPerPageOptions="[5, 10, 25]"
                 currentPageReportTemplate="Showing {first} to {last} of {totalRecords} products"
+                scrollable
+                scrollHeight="400px"
+                sortField="tanggal"
+                :sortOrder="-1"
             >
                 <template #header>
                     <div
@@ -498,8 +527,19 @@ function deleteSelectedProducts() {
                             />
                         </IconField>
                     </div>
+                    <div class="m-3 font-bold">
+                        <strong>
+                            Showing {{ filteredProductsCount }} results
+                            <template v-if="filters.global.value">
+                                for "<span class="text-primary">{{
+                                    filters.global.value
+                                }}</span
+                                >"
+                            </template>
+                        </strong>
+                    </div>
                 </template>
-                
+
                 <Column
                     selectionMode="multiple"
                     style="width: 3rem"
@@ -587,7 +627,11 @@ function deleteSelectedProducts() {
                     style="min-width: 12rem"
                 ></Column>
 
-                <Column :exportable="false" style="min-width: 12rem" header="Action">
+                <Column
+                    :exportable="false"
+                    style="min-width: 12rem"
+                    header="Action"
+                >
                     <template #body="slotProps">
                         <Button
                             icon="pi pi-money-bill"

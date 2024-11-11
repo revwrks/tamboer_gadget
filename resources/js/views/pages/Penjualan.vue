@@ -19,13 +19,24 @@ const fetchPenjualan = async () => {
         console.error("Error fetching penjualan:", error);
     }
 };
+const stokItems = ref();
+
+const fetchStokItems = async () => {
+    try {
+        const response = await axios.get("/api/stocks");
+        stokItems.value = response.data;
+    } catch (error) {
+        console.error("Error fetching stok items:", error);
+    }
+};
 
 // Start polling when component is mounted
 
 const intervalId = ref();
 
 onMounted(() => {
-    fetchPenjualan(); // Initial fetch
+    fetchPenjualan();
+    fetchStokItems(); // Initial fetch
     intervalId.value = setInterval(fetchPenjualan, 10000); // Poll every 10 seconds
 });
 
@@ -39,6 +50,7 @@ onUnmounted(() => {
 const toast = useToast();
 const dt = ref();
 const penjualanDialog = ref(false);
+const addpenjualanDialog = ref(false);
 const penjualanItem = ref({});
 const selectedPenjualan = ref();
 const deleteProductDialog = ref(false);
@@ -74,6 +86,49 @@ function formatCurrency(value) {
         }).format(Math.round(value)); // Rounds the value to the nearest integer
     }
     return "-";
+}
+function createPenjualan() {
+    const id_user = localStorage.getItem("token");
+    axios
+        .post("/api/penjualan", {
+            tanggal: new Date(),
+            id_stock: stokItems.value.id_stock,
+            harga_jual: stokItems.value.harga_jual,
+            id_sales: id_user,
+        })
+        .then(() => {
+            axios
+                .put(`/api/stocks/${stokItems.value.id_stock}`, {
+                    status: "terjual",
+                })
+                .then(() => {
+                    fetchPenjualan();
+                    toast.add({
+                        severity: "success",
+                        summary: "Success",
+                        detail: "Penjualan created and stock updated",
+                        life: 3000,
+                    });
+                })
+                .catch(() => {
+                    toast.add({
+                        severity: "error",
+                        summary: "Error",
+                        detail: "Failed to update stock status",
+                        life: 3000,
+                    });
+                });
+        })
+        .catch(() => {
+            toast.add({
+                severity: "error",
+                summary: "Error",
+                detail: "Failed to create penjualan",
+                life: 3000,
+            });
+        });
+    addpenjualanDialog.value = false;
+    stokItems.value = {};
 }
 
 function getStatusSeverity(status) {
@@ -140,6 +195,16 @@ function confirmDeletePenjualan(item) {
 }
 
 function deletePenjualan() {
+    if (!product.value.id_stock) {
+        toast.add({
+            severity: "warn",
+            summary: "Warning",
+            detail: "Please select a product.",
+            life: 3000,
+        });
+        return;
+    }
+
     axios
         .delete(`/api/penjualan/${penjualanItem.value.id_penjualan}`)
         .then(() => {
@@ -200,6 +265,19 @@ function deleteSelectedProducts() {
     deleteProductsDialog.value = false;
     selectedProducts.value = null;
 }
+/* const today = new Date().toISOString().slice(0, 10); // Today's date in YYYY-MM-DD
+const todaySales = computed(() => {
+    const filteredToday = penjualan.value.filter((item) =>
+        item.tanggal.startsWith(today),
+    );
+    return {
+        unitsSold: filteredToday.length,
+        totalMoney: filteredToday.reduce(
+            (total, item) => total + (item.harga_jual || 0),
+            0,
+        ),
+    };
+}); */
 </script>
 
 <template>
@@ -208,13 +286,10 @@ function deleteSelectedProducts() {
             <Toolbar class="mb-6">
                 <template #start>
                     <Button
-                        label="Delete"
-                        icon="pi pi-trash"
+                        label="New"
+                        icon="pi pi-plus"
                         severity="secondary"
-                        @click="confirmDeleteSelected"
-                        :disabled="
-                            !selectedPenjualan || !selectedPenjualan.length
-                        "
+                        @click="addpenjualanDialog = true"
                     />
                 </template>
             </Toolbar>
@@ -227,9 +302,13 @@ function deleteSelectedProducts() {
                 :paginator="true"
                 :rows="10"
                 :filters="filters"
+                scrollable
+                scrollHeight="400px"
                 paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
                 :rowsPerPageOptions="[5, 10, 25]"
                 currentPageReportTemplate="Showing {first} to {last} of {totalRecords} penjualan"
+                sortField="tanggal"
+                :sortOrder="-1"
             >
                 <template #header>
                     <div
@@ -256,12 +335,12 @@ function deleteSelectedProducts() {
                 </Column>
 
                 <!-- Sales -->
-                <Column field="users.nama" header="Sales" sortable>
+                <Column field="users.nama" header="Penjual" sortable>
                     {{ slotProps.data.users.nama || "Unknown" }}</Column
                 >
 
                 <!-- Stocks Details -->
-                <Column field="stok_hp.nama" header="Nama HP" sortable>
+                <Column field="stok_hp.nama" header="Tipe HP" sortable>
                     {{ slotProps.data.stok_hp.nama }}</Column
                 >
                 <Column field="stok_hp.warna" header="Warna" sortable>
@@ -279,7 +358,11 @@ function deleteSelectedProducts() {
                 </Column>
 
                 <!-- Actions -->
-                <Column :exportable="false" style="min-width: 12rem">
+                <Column
+                    :exportable="false"
+                    style="min-width: 12rem"
+                    header="Action"
+                >
                     <template #body="slotProps">
                         <Button
                             icon="pi pi-pencil"
@@ -299,6 +382,75 @@ function deleteSelectedProducts() {
                 </Column>
             </DataTable>
         </div>
+        <!-- <div>
+            <h4>Total Units Sold Today: {{ todaySales.unitsSold }}</h4>
+            <h4>
+                Total Money Today: {{ formatCurrency(todaySales.totalMoney) }}
+            </h4>
+        </div>
+        <div class="col-span-12">
+            <div class="card p-4 mb-6">
+                <template>
+                    <h4>Total Units Sold Today: {{ todaySales.unitsSold }}</h4>
+                    <h4>
+                        Total Money Today:
+                        <strong>
+                            {{ formatCurrency(todaySales.totalMoney) }}
+                        </strong>
+                    </h4>
+                </template>
+            </div>
+        </div> -->
+
+        <Dialog
+            v-model:visible="addpenjualanDialog"
+            :style="{ width: '450px' }"
+            header="Tambah Data Penjualan"
+            :modal="true"
+        >
+            <div class="flex flex-col gap-6">
+                <div>
+                    <label for="product" class="block font-bold mb-3"
+                        >Product</label
+                    >
+                    <Dropdown
+                        v-model="stokItems.id_stock"
+                        :options="stokItems"
+                        optionLabel="nama"
+                        optionValue="id_stock"
+                        filter
+                        showClear
+                        filterBy="nama"
+                        placeholder="Select a product"
+                    />
+                </div>
+                <div>
+                    <label for="harga_jual" class="block font-bold mb-3"
+                        >Harga Jual</label
+                    >
+                    <InputNumber
+                        v-model="stokItems.harga_jual"
+                        mode="currency"
+                        currency="IDR"
+                        locale="id-ID"
+                        required
+                    />
+                </div>
+            </div>
+            <template #footer>
+                <Button
+                    label="Cancel"
+                    icon="pi pi-times"
+                    text
+                    @click="addpenjualanDialog = false"
+                />
+                <Button
+                    label="Save"
+                    icon="pi pi-check"
+                    @click="createPenjualan"
+                />
+            </template>
+        </Dialog>
 
         <!-- Edit Penjualan Dialog -->
         <Dialog
