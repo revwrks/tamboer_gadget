@@ -14,6 +14,22 @@ const selectedYear = ref(null);
 const loading = ref(false);
 const toast = useToast();
 
+//Month Names Mapping
+const monthNames = {
+    1: "Januari",
+    2: "Februari",
+    3: "Maret",
+    4: "April",
+    5: "Mei",
+    6: "Juni",
+    7: "Juli",
+    8: "Agustus",
+    9: "September",
+    10: "Oktober",
+    11: "November",
+    12: "Desember",
+};
+
 // Format currency for IDR
 const formatCurrency = (value) => {
     if (value != null) {
@@ -105,6 +121,9 @@ const yearOptions = computed(() =>
         .filter((v, i, a) => a.findIndex((t) => t.value === v.value) === i),
 );
 
+// Computed property for selected month name
+const selectedMonthName = computed(() => monthNames[selectedMonth.value]);
+
 // Watch for month or year change and refetch report data and sales details
 watch([selectedMonth, selectedYear], () => {
     fetchReportData();
@@ -180,7 +199,7 @@ onMounted(() => {
             dataKey="month"
             class="text-lg font-bold mt-6 mb-4"
         >
-            Detailed Sales for {{ selectedMonth }} {{ selectedYear }}
+            Detail Penjualan Pada {{ selectedMonthName }} {{ selectedYear }}
         </h3>
         <div
             v-if="salesDetails.length"
