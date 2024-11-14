@@ -147,26 +147,26 @@ onMounted(() => {
         </div>
 
         <DataTable v-if="reportData" :value="[reportData]" dataKey="month">
-            <Column field="phones_sold" header="Units Sold" :sortable="true">
+            <Column field="phones_sold" header="Unit Terjual" :sortable="true">
                 <template #body="slotProps">
                     {{ slotProps.data.phones_sold }}
                 </template>
             </Column>
-            <Column field="total_income" header="Total Income" :sortable="true">
+            <Column field="total_income" header="Total Pemasukan" :sortable="true">
                 <template #body="slotProps">
                     {{ formatCurrency(slotProps.data.total_income) }}
                 </template>
             </Column>
             <Column
                 field="total_expenses"
-                header="Total Expenses"
+                header="Total Pengeluaran"
                 :sortable="true"
             >
                 <template #body="slotProps">
                     {{ formatCurrency(slotProps.data.total_expenses) }}
                 </template>
             </Column>
-            <Column field="profit" header="Profit" :sortable="true">
+            <Column field="profit" header="Laba" :sortable="true">
                 <template #body="slotProps">
                     {{ formatCurrency(slotProps.data.profit) }}
                 </template>
