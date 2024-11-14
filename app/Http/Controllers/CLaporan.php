@@ -9,22 +9,45 @@ use App\Models\MStock;
 
 class CLaporan extends Controller
 {
-    public function getLastFourMonthsSales(Request $request)
+    public function getAvailableDates()
     {
-        $fourMonthsAgo = Carbon::now()->subMonths(4)->startOfMonth();
-
-        $salesData = MPenjualan::selectRaw('YEAR(tanggal) as year, MONTH(tanggal) as month, COUNT(*) as total_sold')
-            ->where('tanggal', '>=', $fourMonthsAgo)
+        $dates = MPenjualan::selectRaw('YEAR(tanggal) as year, MONTH(tanggal) as month')
             ->groupBy('year', 'month')
             ->orderByRaw('year DESC, month DESC')
             ->get();
 
-        return response()->json($salesData);
+        // Adding month names for better display in Vue
+        $dates->transform(function ($date) {
+            $date->month_name = Carbon::createFromDate($date->year, $date->month, 1)->format('F');
+            return $date;
+        });
+
+        return response()->json($dates);
     }
+
+    public function getSalesDetails(Request $request)
+    {
+        $request->validate([
+            'month' => 'required|integer|between:1,12',
+            'year' => 'required|integer|min:2000',
+        ]);
+
+        $month = $request->input('month');
+        $year = $request->input('year');
+
+        // Fetch detailed sales data with associated user information
+        $sales = MPenjualan::whereYear('tanggal', $year)
+            ->whereMonth('tanggal', $month)
+            ->with(['stokHp', 'users']) // Ensure 'users' is included here
+            ->get();
+
+        return response()->json($sales);
+    }
+
+
 
     public function getMonthlyReport(Request $request)
     {
-        // Validate 'month' and 'year' inputs
         $request->validate([
             'month' => 'integer|between:1,12',
             'year' => 'integer|min:2000',
@@ -33,29 +56,33 @@ class CLaporan extends Controller
         $month = $request->input('month', Carbon::now()->month);
         $year = $request->input('year', Carbon::now()->year);
 
-        // Retrieve sales data and related stock info for the given month and year
         $sales = MPenjualan::whereYear('tanggal', $year)
             ->whereMonth('tanggal', $month)
             ->with('stokHp')
             ->get();
 
+        if ($sales->isEmpty()) {
+            return response()->json([
+                'message' => 'No data available for the selected month and year.',
+                'phones_sold' => 0,
+                'total_income' => 0,
+                'total_expenses' => 0,
+                'profit' => 0,
+            ]);
+        }
+
         $phonesSold = $sales->count();
         $totalIncome = $sales->sum('harga_jual');
-
         $totalExpenses = $sales->sum(function ($sale) {
             return $sale->stokHp->harga_masuk ?? 0;
         });
-
         $profit = $totalIncome - $totalExpenses;
 
-        // Total historical data
         $totalPhonesSoldEver = MPenjualan::count();
         $totalIncomeEver = MPenjualan::sum('harga_jual');
-
         $totalExpensesEver = MPenjualan::with('stokHp')->get()->sum(function ($sale) {
             return $sale->stokHp->harga_masuk ?? 0;
         });
-
         $totalProfitEver = $totalIncomeEver - $totalExpensesEver;
 
         return response()->json([
@@ -69,6 +96,7 @@ class CLaporan extends Controller
             'total_profit_ever' => $totalProfitEver,
         ]);
     }
+
 
     public function getCustomDateRangeReport(Request $request)
     {
