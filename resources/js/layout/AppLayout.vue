@@ -67,3 +67,4 @@ function isOutsideClicked(event) {
     </div>
     <Toast />
 </template>
+

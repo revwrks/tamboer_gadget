@@ -12,7 +12,15 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        //
+        $middleware->redirectGuestsTo(function ($request) {
+            if ($request->is('api/*') || $request->expectsJson()) {
+                abort(response()->json(['message' => 'Unauthenticated.'], 401));
+            }
+            return route('login');
+        });
+    })
+    ->withSchedule(function (\Illuminate\Console\Scheduling\Schedule $schedule) {
+        $schedule->command('app:cleanup-old-data')->daily();
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //

@@ -1,10 +1,15 @@
 import { computed, reactive, readonly } from 'vue';
 
+const initialDark = typeof localStorage !== 'undefined' && localStorage.getItem('tamboer_dark_theme') === 'true';
+if (initialDark && typeof document !== 'undefined') {
+    document.documentElement.classList.add('app-dark');
+}
+
 const layoutConfig = reactive({
     preset: 'Aura',
-    primary: 'emerald',
-    surface: null,
-    darkTheme: false,
+    primary: (typeof localStorage !== 'undefined' && localStorage.getItem('tamboer_primary_color')) || 'amber',
+    surface: (typeof localStorage !== 'undefined' && localStorage.getItem('tamboer_surface_color')) || 'stone',
+    darkTheme: initialDark,
     menuMode: 'static'
 });
 
@@ -21,10 +26,16 @@ const layoutState = reactive({
 export function useLayout() {
     const setPrimary = (value) => {
         layoutConfig.primary = value;
+        if (typeof localStorage !== 'undefined') {
+            localStorage.setItem('tamboer_primary_color', value);
+        }
     };
 
     const setSurface = (value) => {
         layoutConfig.surface = value;
+        if (typeof localStorage !== 'undefined') {
+            localStorage.setItem('tamboer_surface_color', value);
+        }
     };
 
     const setPreset = (value) => {
@@ -42,16 +53,18 @@ export function useLayout() {
     const toggleDarkMode = () => {
         if (!document.startViewTransition) {
             executeDarkModeToggle();
-
             return;
         }
 
-        document.startViewTransition(() => executeDarkModeToggle(event));
+        document.startViewTransition(() => executeDarkModeToggle());
     };
 
     const executeDarkModeToggle = () => {
         layoutConfig.darkTheme = !layoutConfig.darkTheme;
         document.documentElement.classList.toggle('app-dark');
+        if (typeof localStorage !== 'undefined') {
+            localStorage.setItem('tamboer_dark_theme', layoutConfig.darkTheme ? 'true' : 'false');
+        }
     };
 
     const onMenuToggle = () => {
@@ -80,5 +93,20 @@ export function useLayout() {
 
     const getSurface = computed(() => layoutConfig.surface);
 
-    return { layoutConfig: readonly(layoutConfig), layoutState: readonly(layoutState), onMenuToggle, isSidebarActive, isDarkTheme, getPrimary, getSurface, setActiveMenuItem, toggleDarkMode, setPrimary, setSurface, setPreset, resetMenu, setMenuMode };
+    return {
+        layoutConfig: readonly(layoutConfig),
+        layoutState: readonly(layoutState),
+        onMenuToggle,
+        isSidebarActive,
+        isDarkTheme,
+        getPrimary,
+        getSurface,
+        setActiveMenuItem,
+        toggleDarkMode,
+        setPrimary,
+        setSurface,
+        setPreset,
+        resetMenu,
+        setMenuMode
+    };
 }

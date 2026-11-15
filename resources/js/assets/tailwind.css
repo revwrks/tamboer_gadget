@@ -1,3 +1,280 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer utilities {
+    /* Nordic Cashmere Panels & Cards */
+    .nordic-panel,
+    .glass-panel {
+        background-color: #ffffff;
+        border: 1px solid #e7e5df;
+        box-shadow: 0 1px 3px 0 rgba(28, 25, 23, 0.03), 0 1px 2px -1px rgba(28, 25, 23, 0.03);
+    }
+
+    .nordic-card,
+    .glass-card {
+        background-color: #ffffff;
+        border: 1px solid #e7e5df;
+        box-shadow: 0 1px 3px 0 rgba(28, 25, 23, 0.02);
+        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .nordic-card:hover,
+    .glass-card:hover {
+        border-color: #d6d3cb;
+        transform: translateY(-1px);
+        box-shadow: 0 6px 16px -4px rgba(28, 25, 23, 0.06);
+    }
+
+    /* Tactile Micro-interaction */
+    .nordic-btn,
+    .ios-btn {
+        transition: transform 0.12s cubic-bezier(0.2, 0, 0, 1), opacity 0.12s ease, background-color 0.15s ease;
+        user-select: none;
+    }
+    .nordic-btn:active,
+    .ios-btn:active {
+        transform: scale(0.97);
+    }
+
+    /* Nordic Linen Scrollbar */
+    .nordic-scrollbar::-webkit-scrollbar,
+    .ios-scrollbar::-webkit-scrollbar {
+        width: 5px;
+        height: 5px;
+    }
+    .nordic-scrollbar::-webkit-scrollbar-track,
+    .ios-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    .nordic-scrollbar::-webkit-scrollbar-thumb,
+    .ios-scrollbar::-webkit-scrollbar-thumb {
+        background: #d6d3cb;
+        border-radius: 9999px;
+    }
+    .nordic-scrollbar::-webkit-scrollbar-thumb:hover,
+    .ios-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #a8a29e;
+    }
+}
+
+/* ======================================================== */
+/* LIGHT MODE LAYOUT DEFAULTS                               */
+/* ======================================================== */
+.layout-topbar {
+    background: #ffffff !important;
+    border-bottom: 1px solid #e7e5df !important;
+    box-shadow: 0 1px 2px 0 rgba(28, 25, 23, 0.02) !important;
+}
+
+.layout-sidebar {
+    background: #ffffff !important;
+    border: 1px solid #e7e5df !important;
+    box-shadow: 0 2px 8px -2px rgba(28, 25, 23, 0.03) !important;
+}
+
+.card {
+    background: #ffffff !important;
+    border: 1px solid #e7e5df !important;
+    box-shadow: 0 1px 3px 0 rgba(28, 25, 23, 0.03) !important;
+}
+
+.layout-menu ul a.active-route {
+    background: #f5f4ef !important;
+    border: 1px solid #e7e5df !important;
+    color: #1c1917 !important;
+    font-weight: 700 !important;
+}
+
+.layout-menu ul a {
+    color: #57534e !important;
+    border-radius: 0.75rem !important;
+    transition: all 0.15s ease !important;
+}
+
+.layout-menu ul a:hover {
+    background: #fbfbfa !important;
+    color: #1c1917 !important;
+}
+
+/* Topbar Highlight Accent */
+.layout-topbar-action-highlight {
+    background-color: #b45309 !important;
+    color: #ffffff !important;
+}
+.layout-topbar-action-highlight:hover {
+    background-color: #92400e !important;
+}
+
+/* ======================================================== */
+/* NORDIC OBSIDIAN DARK THEME OVERRIDES (.app-dark)         */
+/* ======================================================== */
+.app-dark {
+    color-scheme: dark;
+}
+
+html.app-dark body,
+body.app-dark {
+    background-color: #121110 !important;
+    color: #fafaf9 !important;
+}
+
+/* Layout containers in Dark Mode */
+.app-dark .layout-topbar {
+    background: #1c1917 !important;
+    border-bottom: 1px solid #292524 !important;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.4) !important;
+}
+
+.app-dark .layout-sidebar {
+    background: #1c1917 !important;
+    border: 1px solid #292524 !important;
+    box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.5) !important;
+}
+
+.app-dark .card,
+.app-dark .nordic-panel,
+.app-dark .glass-panel {
+    background-color: #1c1917 !important;
+    border-color: #292524 !important;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.3) !important;
+}
+
+.app-dark .nordic-card,
+.app-dark .glass-card {
+    background-color: #1c1917 !important;
+    border-color: #292524 !important;
+}
+
+.app-dark .nordic-card:hover,
+.app-dark .glass-card:hover {
+    border-color: #44403c !important;
+    box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Menu items in Dark Mode */
+.app-dark .layout-menu ul a {
+    color: #a8a29e !important;
+}
+
+.app-dark .layout-menu ul a:hover {
+    background: #292524 !important;
+    color: #fafaf9 !important;
+}
+
+.app-dark .layout-menu ul a.active-route {
+    background: #292524 !important;
+    border: 1px solid #44403c !important;
+    color: #fbbf24 !important;
+    font-weight: 700 !important;
+}
+
+/* Utility Token Mappings for Dark Mode */
+.app-dark .bg-white {
+    background-color: #1c1917 !important;
+}
+
+.app-dark .bg-\[\#faf9f5\] {
+    background-color: #181614 !important;
+    border-color: #292524 !important;
+}
+
+.app-dark .bg-\[\#f0ede6\] {
+    background-color: #292524 !important;
+    border-color: #3a3530 !important;
+}
+
+.app-dark .bg-\[\#f6f5f0\] {
+    background-color: #141210 !important;
+    border-color: #292524 !important;
+}
+
+.app-dark .border-\[\#e7e5df\] {
+    border-color: #292524 !important;
+}
+
+.app-dark .text-\[\#1c1917\] {
+    color: #fafaf9 !important;
+}
+
+.app-dark .text-\[\#78716c\] {
+    color: #a8a29e !important;
+}
+
+.app-dark .text-\[\#44403c\] {
+    color: #d6d3d1 !important;
+}
+
+/* Primary buttons in Dark Mode */
+.app-dark button.bg-\[\#1c1917\],
+.app-dark .layout-topbar-action-highlight {
+    background-color: #b45309 !important;
+    color: #ffffff !important;
+    border-color: #b45309 !important;
+}
+.app-dark button.bg-\[\#1c1917\]:hover,
+.app-dark .layout-topbar-action-highlight:hover {
+    background-color: #d97706 !important;
+}
+
+/* Secondary & pill buttons in Dark Mode */
+.app-dark button.bg-\[\#f0ede6\] {
+    background-color: #292524 !important;
+    color: #d6d3d1 !important;
+    border-color: #3a3530 !important;
+}
+.app-dark button.bg-\[\#f0ede6\]:hover {
+    background-color: #3a3530 !important;
+    color: #fafaf9 !important;
+}
+
+/* Inputs & Form controls in Dark Mode */
+.app-dark input,
+.app-dark textarea,
+.app-dark select {
+    background-color: #181614 !important;
+    border-color: #292524 !important;
+    color: #fafaf9 !important;
+}
+
+.app-dark input::placeholder,
+.app-dark textarea::placeholder {
+    color: #78716c !important;
+}
+
+.app-dark input:focus,
+.app-dark textarea:focus {
+    border-color: #b45309 !important;
+    box-shadow: 0 0 0 1px #b45309 !important;
+}
+
+/* Dialogs & Overlays in Dark Mode */
+.app-dark .p-dialog {
+    background-color: #1c1917 !important;
+    border: 1px solid #292524 !important;
+    color: #fafaf9 !important;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.7), 0 8px 10px -6px rgba(0, 0, 0, 0.7) !important;
+}
+
+.app-dark .p-dialog .p-dialog-header,
+.app-dark .p-dialog .p-dialog-content,
+.app-dark .p-dialog .p-dialog-footer {
+    background-color: #1c1917 !important;
+    color: #fafaf9 !important;
+    border-color: #292524 !important;
+}
+
+/* Topbar Logo text in Dark Mode */
+.app-dark .layout-topbar-logo span:first-child {
+    color: #fafaf9 !important;
+}
+
+/* Scrollbar in Dark Mode */
+.app-dark .nordic-scrollbar::-webkit-scrollbar-thumb,
+.app-dark .ios-scrollbar::-webkit-scrollbar-thumb {
+    background: #3a3530 !important;
+}
+.app-dark .nordic-scrollbar::-webkit-scrollbar-thumb:hover,
+.app-dark .ios-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #57534e !important;
+}

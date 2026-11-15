@@ -9,66 +9,50 @@ class MPenjualan extends Model
 {
     use HasFactory;
 
-    /**
-     * The table associated with the model.
-     *
-     * @var string
-     */
     protected $table = 'penjualan';
-
-    /**
-     * The primary key associated with the table.
-     *
-     * @var string
-     */
     protected $primaryKey = 'id_penjualan';
-
-    /**
-     * Indicates if the IDs are auto-incrementing.
-     *
-     * @var bool
-     */
     public $incrementing = true;
+    protected $keyType = 'int';
+    public $timestamps = true;
 
-    /**
-     * Enable timestamps
-     *
-     * @var bool
-     */
-    public $timestamps = false; // Set to false if you don't want to use timestamps
-
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var array
-     */
     protected $fillable = [
-        'tanggal', 
-        'id_stock', 
-        'id_sales', 
+        'no_invoice',
+        'tanggal',
+        'id_stock',
+        'id_sales',
+        'nama_pembeli',
+        'no_hp_pembeli',
         'harga_jual',
+        'diskon',
+        'met_pem',
+        'uang_bayar',
+        'kembalian',
+        'catatan',
     ];
 
-    /**
-     * The attributes that should be cast to native types.
-     *
-     * @var array
-     */
     protected $casts = [
-        'tanggal' => 'date',
+        'tanggal' => 'date:Y-m-d',
+        'harga_jual' => 'float',
+        'diskon' => 'float',
+        'uang_bayar' => 'float',
+        'kembalian' => 'float',
+        'met_pem' => 'string',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
     ];
 
-    /**
-     * Define relationships with other models.
-     */
     public function stokHp()
     {
-        return $this->belongsTo(MStock::class, 'id_stock');
+        return $this->belongsTo(MStock::class, 'id_stock', 'id_stock');
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(MUsers::class, 'id_sales', 'id_user')->withDefault();
     }
 
     public function users()
     {
-        return $this->belongsTo(MUsers::class,'id_sales', 'id_user');
+        return $this->user();
     }
 }
-

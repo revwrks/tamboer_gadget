@@ -42,7 +42,7 @@ class MStock extends Model
      *
      * @var bool
      */
-    public $timestamps = false; // Disable timestamps as the table has 'created_at' and 'updated_at'
+    public $timestamps = true;
 
     /**
      * The attributes that are mass assignable.
@@ -53,12 +53,19 @@ class MStock extends Model
         'tanggal',
         'imei',
         'brand',
+        'kategori',
         'nama',
         'warna',
+        'ram',
+        'storage',
+        'kondisi',
+        'kelengkapan',
+        'garansi',
         'harga_masuk',
         'harga_jual',
         'id_sales',
-        'status'
+        'status',
+        'catatan',
     ];
 
     /**
@@ -67,18 +74,44 @@ class MStock extends Model
      * @var array
      */
     protected $casts = [
-        'tanggal' => 'date',
+        'tanggal' => 'date:Y-m-d',
         'harga_masuk' => 'float',
         'harga_jual' => 'float',
         'id_sales' => 'integer',
         'status' => 'string',
+        'kategori' => 'string',
+        'kondisi' => 'string',
     ];
 
     /**
-     * Define the relationship with the user (salesperson).
+     * Define the relationship with the salesperson (user).
      */
     public function sales()
     {
         return $this->belongsTo(MUsers::class, 'id_sales', 'id_user')->withDefault();
+    }
+
+    /**
+     * Scope for ready stock.
+     */
+    public function scopeReady($query)
+    {
+        return $query->where('status', 'ada');
+    }
+
+    /**
+     * Scope for sold stock.
+     */
+    public function scopeSold($query)
+    {
+        return $query->where('status', 'terjual');
+    }
+
+    /**
+     * Scope by category.
+     */
+    public function scopeCategory($query, $category)
+    {
+        return $query->where('kategori', $category);
     }
 }

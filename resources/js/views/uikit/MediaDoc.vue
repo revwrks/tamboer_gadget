@@ -107,3 +107,6 @@ function getSeverity(status) {
         </Galleria>
     </div>
 </template>
+
+
+

@@ -161,3 +161,6 @@ function getSeverity(product) {
         </div>
     </div>
 </template>
+
+
+

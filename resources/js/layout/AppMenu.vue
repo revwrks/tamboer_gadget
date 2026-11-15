@@ -1,10 +1,9 @@
 <script setup>
-import { ref, onMounted } from "vue";
-import axios from "axios";
-
+import { computed } from "vue";
+import { useAuth } from "@/composables/useAuth";
 import AppMenuItem from './AppMenuItem.vue';
-const user = ref({}); // Will hold the fetched user data
-const model = ref([]); // Will hold the menu items based on the user's role
+
+const { isOwner } = useAuth();
 
 const ownermodel = [
     {
@@ -37,6 +36,7 @@ const ownermodel = [
         ]
     }
 ];
+
 const salesmodel = [
     {
         label: 'Home',
@@ -59,31 +59,9 @@ const salesmodel = [
     }
 ];
 
-// Function to fetch user data from the API
-const fetchUserData = async () => {
-  try {
-    // Assuming the user ID (token) is stored in localStorage
-    const id_user = localStorage.getItem("token");
-
-    // Fetch user data based on their ID
-    const response = await axios.get(`/api/users/${id_user}`);
-
-    // Set the user data
-    user.value = response.data;
-
-    // Set the menu items based on the user's role (level)
-    if (user.value.level === "owner") {
-      model.value = ownermodel;
-    } else if (user.value.level === "sales") {
-      model.value = salesmodel;
-    }
-  } catch (error) {
-    console.error("Error fetching user data:", error);
-  }
-};
-
-// Fetch user data when the component is mounted
-onMounted(fetchUserData);
+const model = computed(() => {
+    return isOwner.value ? ownermodel : salesmodel;
+});
 </script>
 
 <template>
@@ -96,3 +74,4 @@ onMounted(fetchUserData);
 </template>
 
 <style lang="scss" scoped></style>
+
