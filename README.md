@@ -1,66 +1,197 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# 📱 Tamboer Gadget — Boutique POS & Inventory Management System
 
 <p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
+  <img src="./docs/screenshots/dashboard-light.png" alt="Tamboer Gadget Dashboard" width="100%" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08);" />
 </p>
 
-## About Laravel
+<p align="center">
+  <img src="https://img.shields.io/badge/Laravel-11.x-FF2D20?style=for-the-badge&logo=laravel&logoColor=white" alt="Laravel 11" />
+  <img src="https://img.shields.io/badge/Vue.js-3.x-4FC08D?style=for-the-badge&logo=vuedotjs&logoColor=white" alt="Vue 3" />
+  <img src="https://img.shields.io/badge/PrimeVue-4.x-06B6D4?style=for-the-badge&logo=primevue&logoColor=white" alt="PrimeVue 4" />
+  <img src="https://img.shields.io/badge/Tailwind_CSS-3.x-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white" alt="Tailwind CSS" />
+  <img src="https://img.shields.io/badge/Vite-5.x-646CFF?style=for-the-badge&logo=vite&logoColor=white" alt="Vite" />
+  <img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="License MIT" />
+</p>
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+---
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## 🌟 Overview
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+**Tamboer Gadget** is a modern, high-performance retail Point of Sale (POS) and inventory management web application tailored specifically for gadget boutiques, smartphone retail stores, and electronics repair shops. 
 
-## Learning Laravel
+Engineered with **Laravel 11**, **Vue 3 (Composition API)**, **PrimeVue 4**, and **Tailwind CSS**, it bridges high aesthetic standards (**Nordic Warm Cashmere & Obsidian Dark Mode**) with deep domain-specific engineering, including an offline **GSMA TAC IMEI lookup engine**, **omnichannel barcode scanning**, and **live thermal receipt printing**.
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+---
 
-You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
+## 📸 Visual Showcase
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+<div align="center">
 
-## Laravel Sponsors
+| ☀️ Nordic Linen (Light Mode) | 🌙 Obsidian Stone (Dark Mode) |
+| :---: | :---: |
+| <img src="./docs/screenshots/dashboard-light.png" width="480" /> | <img src="./docs/screenshots/dashboard-dark.png" width="480" /> |
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+| 🛒 Adaptive Kasir POS | ⚡ Offline TAC Auto-Fill |
+| :---: | :---: |
+| <img src="./docs/screenshots/pos-light.png" width="480" /> | <img src="./docs/screenshots/stock-tac-autofill.png" width="480" /> |
 
-### Premium Partners
+</div>
 
-- **[Vehikl](https://vehikl.com/)**
-- **[Tighten Co.](https://tighten.co)**
-- **[WebReinvent](https://webreinvent.com/)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel/)**
-- **[Cyber-Duck](https://cyber-duck.co.uk)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Jump24](https://jump24.co.uk)**
-- **[Redberry](https://redberry.international/laravel/)**
-- **[Active Logic](https://activelogic.com)**
-- **[byte5](https://byte5.de)**
-- **[OP.GG](https://op.gg)**
+---
 
-## Contributing
+## ✨ Key Architectural Highlights
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+### 1. ⚡ Local GSMA TAC Lookup & Self-Learning Engine
+Inputting 15-digit IMEI numbers along with model specifications for every unit is notoriously slow in retail stores. Tamboer Gadget implements a local **Type Allocation Code (TAC)** engine:
+- **Instant Recognition**: Analyzes the first 8 digits of any scanned IMEI and matches it against an indexed local database of popular smartphone models (Apple iPhone 11–16 series, Samsung Galaxy S/A/Z series, Xiaomi, Redmi, POCO, Oppo, Vivo, Infinix, and Realme).
+- **Auto-Fill Specs**: Automatically populates `Brand`, `Nama Model`, `RAM`, and `Storage` in `< 5ms` with **zero external API calls**, zero latency, and no recurring API fees.
+- **Self-Learning Dictionary**: When an unlisted model is added by staff, the backend automatically caches the new 8-digit TAC into `device_tac`, immediately recognizing all subsequent units of that model.
 
-## Code of Conduct
+### 2. 🛒 Adaptive POS Split Layout
+- **Desktop 3-Column Experience**: Sticky real-time cart sidebar with quick denomination shortcuts (10k, 20k, 50k, 100k, Pas), instant change computation, customer info input, and instant receipt generation.
+- **Mobile Bottom-Sheet Drawer**: Responsive layout on smartphones and tablets, collapsing the cart into a tactile floating bar with swipeable bottom-sheet drawer checkout.
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+### 3. 📷 Omnichannel Barcode Scanning
+- **Hardware Scanner (HID)**: Plug-and-play USB & Bluetooth barcode scanners automatically populate and trigger lookup upon scan.
+- **Mobile Camera Scanner**: Built-in WebRTC camera scanner powered by `html5-qrcode` allows retail staff to scan packaging barcodes directly using smartphones or tablets without needing extra hardware.
 
-## Security Vulnerabilities
+<p align="center">
+  <img src="./docs/screenshots/barcode-scanner-camera.png" alt="Mobile Camera Barcode Scanner" width="420" />
+</p>
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+### 4. 🧾 ESC/POS Thermal Receipt Generator
+- Generates clean 58mm / 80mm monospaced thermal receipts formatted specifically for mini receipt printers.
+- Includes store metadata, unique invoice numbering, items breakdown, payment method, change due, and warranty notes.
 
-## License
+### 5. 🎨 Nordic Warm Cashmere & Obsidian Dark Mode
+- **Zero-FOUC Architecture**: Pre-mount theme bootstrapper prevents white/dark flashes during initial page load.
+- **Harmonized Colorway**: Warm amber accents (`#b45309` / `#fbbf24`), organic stone charcoal (`#1c1917`), and linen surfaces (`#faf9f5` / `#121110`).
+- **Dynamic Charts**: Chart.js datasets adapt automatically between light and dark themes on the fly.
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+### 6. 🔒 Role-Based Access Control (RBAC) & Security
+- Strict role boundaries between **Owner** and **Sales / Staff**:
+  - **Owner**: Full access to monthly financial statements, net profit analytics, cost of goods sold (HPP), Excel export, and employee account management.
+  - **Staff / Kasir**: Focused on POS checkout, inventory catalog inspection, and stock registration, with sensitive financial figures masked.
+- API authentication guarded by **Laravel Sanctum** tokens with secure HTTP headers.
+
+---
+
+## 🛠️ Tech Stack
+
+| Layer | Technologies |
+| :--- | :--- |
+| **Backend** | [Laravel 11.x](https://laravel.com), PHP 8.2+, [Laravel Sanctum](https://laravel.com/docs/sanctum) |
+| **Frontend SPA** | [Vue 3](https://vuejs.org) (Composition API, `<script setup>`), [Vue Router 4](https://router.vuejs.org) |
+| **UI Components** | [PrimeVue 4](https://primevue.org) (Customized Aura Theme Preset), [PrimeIcons](https://primevue.org/icons) |
+| **Styling** | [Tailwind CSS 3.x](https://tailwindcss.com), Custom Nordic Design Tokens |
+| **Bundler** | [Vite 5.x](https://vitejs.dev) |
+| **Database** | MySQL 8.0+ / MariaDB |
+| **Libraries** | [Chart.js](https://www.chartjs.org), [html5-qrcode](https://github.com/mebjas/html5-qrcode), [ExcelJS](https://github.com/exceljs/exceljs) |
+
+---
+
+## 🚀 Getting Started
+
+Follow these steps to run the application locally on your machine:
+
+### 1. Prerequisites
+- **PHP** >= 8.2
+- **Composer** >= 2.5
+- **Node.js** >= 18.x & **npm**
+- **MySQL** / MariaDB
+
+### 2. Clone Repository
+```bash
+git clone https://github.com/revwrks/tamboer_gadget.git
+cd tamboer_gadget
+```
+
+### 3. Install Dependencies
+```bash
+# Install PHP dependencies
+composer install
+
+# Install Node dependencies
+npm install
+```
+
+### 4. Configure Environment
+```bash
+cp .env.example .env
+php artisan key:generate
+```
+
+Update your `.env` database configuration:
+```env
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=tamboer_gadget
+DB_USERNAME=root
+DB_PASSWORD=
+```
+
+### 5. Run Migrations & Seeders
+```bash
+php artisan migrate --seed
+```
+
+### 6. Build Assets & Start Development Server
+```bash
+# Build Vue & Tailwind assets
+npm run build
+
+# Start Laravel backend server
+php artisan serve
+```
+
+The application will be accessible at: `http://localhost:8000`
+
+---
+
+## 🔑 Default Demo Accounts
+
+| Role | Username | Password | Access Rights |
+| :--- | :--- | :--- | :--- |
+| **Owner / Admin** | `revworks` | `admin123` | Full Access (Dashboard Laba, Stok, POS, Laporan Keuangan, User Management) |
+| **Sales / Kasir** | `revwerks` | `admin123` | POS Kasir, Katalog Stok, Tambah Unit |
+
+---
+
+## 📂 Project Structure
+
+```
+tamboer_gadget/
+├── app/
+│   ├── Http/Controllers/     # REST API Controllers (CStock, CPenjualan, CLaporan, CUsers)
+│   └── Models/               # Eloquent Models (MStock, MPenjualan, MDeviceTac, MUsers)
+├── database/
+│   ├── migrations/           # Database Schema & Initial TAC Seeders
+│   └── seeders/              # Default User & Sample Stock Seeders
+├── docs/
+│   └── screenshots/          # High-resolution portfolio showcase imagery
+├── resources/
+│   ├── js/
+│   │   ├── components/       # BarcodeScanner, ThermalReceipt, FloatingConfigurator
+│   │   ├── layout/           # AppTopbar, AppSidebar, AppConfigurator, Composables
+│   │   ├── views/            # Dashboard, Penjualan (POS), Stok, Laporan, Akun
+│   │   ├── app.js            # PrimeVue 4 Nordic Theme Preset & Router initialization
+│   │   └── assets/           # Tailwind CSS Nordic Design System tokens
+│   └── views/
+│       └── welcome.blade.php # Single-Page Application (SPA) Blade shell
+└── routes/
+    ├── api.php               # Protected Sanctum API Endpoints
+    └── web.php               # SPA Fallback Web Route
+```
+
+---
+
+## 📄 License
+
+This project is open-sourced software licensed under the [MIT License](LICENSE).
+
+---
+
+<p align="center">
+  Crafted with passion for modern gadget retail engineering. ⚡
+</p>
