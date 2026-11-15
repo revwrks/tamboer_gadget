@@ -224,28 +224,63 @@ const executeDeleteProduct = async () => {
     }
 };
 
-// Auto fill IMEI scanner
+// Auto fill IMEI scanner via TAC Lookup & History
 const handleImeiScanned = async (scannedImei) => {
-    if (!scannedImei || scannedImei.length < 8) return;
+    const clean = (scannedImei || "").replace(/\D/g, "");
+    if (!clean || clean.length < 8) return;
     if (product.value.id_stock) return;
 
     imeiSearching.value = true;
     try {
-        const response = await axios.get(`stocks/search-imei/${scannedImei}`);
-        if (response.data && response.data.id_stock) {
-            product.value.brand = response.data.brand || product.value.brand;
-            product.value.nama = response.data.nama || product.value.nama;
-            product.value.warna = response.data.warna || product.value.warna;
-            product.value.harga_jual = response.data.harga_jual || product.value.harga_jual;
+        // 1. Prioritas utama: Cek TAC Lookup Engine (Database GSMA TAC lokal & history)
+        const tacRes = await axios.get(`stocks/lookup-tac/${clean}`);
+        if (tacRes.data && tacRes.data.found) {
+            const data = tacRes.data;
+            product.value.brand = data.brand || product.value.brand;
+            product.value.nama = data.nama || product.value.nama;
+            if (data.storage) product.value.storage = data.storage;
+            if (data.ram) product.value.ram = data.ram;
+            if (data.warna && data.warna !== "-") product.value.warna = data.warna;
+            if (data.kategori) product.value.kategori = data.kategori;
+
+            const sourceLabel = data.source === "tac_dictionary" ? "Database TAC" : "Riwayat Stok";
             toast.add({
                 severity: "success",
-                summary: "Data Ditemukan",
-                detail: `Spesifikasi unit ${response.data.nama} diisi otomatis`,
+                summary: "TAC Teridentifikasi (" + sourceLabel + ")",
+                detail: `${data.brand} ${data.nama} ${data.storage ? data.storage : ''} terdeteksi otomatis`,
+                life: 3500,
+            });
+            return;
+        }
+
+        // 2. Fallback: Cek exact IMEI di stok sebelumnya
+        const exactRes = await axios.get(`stocks/search-imei/${clean}`);
+        if (exactRes.data && exactRes.data.id_stock) {
+            product.value.brand = exactRes.data.brand || product.value.brand;
+            product.value.nama = exactRes.data.nama || product.value.nama;
+            product.value.warna = exactRes.data.warna || product.value.warna;
+            product.value.harga_jual = exactRes.data.harga_jual || product.value.harga_jual;
+            if (exactRes.data.storage) product.value.storage = exactRes.data.storage;
+            if (exactRes.data.ram) product.value.ram = exactRes.data.ram;
+
+            toast.add({
+                severity: "success",
+                summary: "Unit Terdaftar Ditemukan",
+                detail: `Spesifikasi unit ${exactRes.data.nama} diisi otomatis`,
                 life: 3000,
             });
+            return;
         }
+
+        // 3. Jika belum terdaftar di TAC
+        toast.add({
+            severity: "info",
+            summary: "TAC Baru Ditemukan",
+            detail: `TAC ${clean.substring(0, 8)} belum terdaftar. Isi Brand & Model sekali, sistem akan otomatis menyimpannya.`,
+            life: 4000,
+        });
     } catch (error) {
-        // Not found is fine for new unit
+        // Silently continue for new TAC
     } finally {
         imeiSearching.value = false;
     }

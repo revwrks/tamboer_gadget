@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\MStock;
+use App\Models\MDeviceTac;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -79,6 +80,24 @@ class CStock extends Controller
                 'status' => 'ada',
                 'catatan' => $validated['catatan'] ?? null,
             ]);
+
+            // Self-learning TAC: Simpan TAC baru jika belum terdaftar
+            if (!empty($validated['imei']) && !empty($validated['brand']) && !empty($validated['nama'])) {
+                $cleanImei = preg_replace('/\D/', '', $validated['imei']);
+                if (strlen($cleanImei) >= 8) {
+                    $tac = substr($cleanImei, 0, 8);
+                    MDeviceTac::firstOrCreate(
+                        ['tac' => $tac],
+                        [
+                            'brand' => $validated['brand'],
+                            'model' => $validated['nama'],
+                            'storage' => $validated['storage'] ?? null,
+                            'ram' => $validated['ram'] ?? null,
+                            'kategori' => $validated['kategori'] ?? 'gadget',
+                        ]
+                    );
+                }
+            }
 
             return response()->json([
                 'success' => 'Stok berhasil ditambahkan',
@@ -176,6 +195,60 @@ class CStock extends Controller
             return response()->json(['error' => 'Stok dengan IMEI tersebut tidak ditemukan'], 404);
         } catch (\Exception $e) {
             return response()->json(['error' => 'Gagal mencari data berdasarkan IMEI'], 500);
+        }
+    }
+
+    public function lookupTac($imei)
+    {
+        try {
+            $clean = preg_replace('/\D/', '', $imei);
+            if (strlen($clean) < 8) {
+                return response()->json([
+                    'found' => false,
+                    'error' => 'Nomor IMEI harus memiliki minimal 8 digit TAC'
+                ], 400);
+            }
+
+            $tac = substr($clean, 0, 8);
+
+            // 1. Cek dari dictionary TAC lokal
+            $device = MDeviceTac::where('tac', $tac)->first();
+            if ($device) {
+                return response()->json([
+                    'found' => true,
+                    'source' => 'tac_dictionary',
+                    'tac' => $tac,
+                    'brand' => $device->brand,
+                    'nama' => $device->model,
+                    'storage' => $device->storage,
+                    'ram' => $device->ram,
+                    'kategori' => $device->kategori ?? 'gadget'
+                ], 200);
+            }
+
+            // 2. Fallback: Cek dari riwayat stok barang yang pernah masuk
+            $history = MStock::where('imei', 'LIKE', $tac . '%')->orderBy('id_stock', 'desc')->first();
+            if ($history) {
+                return response()->json([
+                    'found' => true,
+                    'source' => 'stock_history',
+                    'tac' => $tac,
+                    'brand' => $history->brand,
+                    'nama' => $history->nama,
+                    'storage' => $history->storage,
+                    'ram' => $history->ram,
+                    'warna' => $history->warna,
+                    'kategori' => $history->kategori ?? 'gadget'
+                ], 200);
+            }
+
+            return response()->json([
+                'found' => false,
+                'tac' => $tac,
+                'message' => 'Model belum terdaftar di database TAC. Silakan lengkapi manual (akan otomatis tersimpan untuk unit berikutnya).'
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Gagal melakukan TAC lookup: ' . $e->getMessage()], 500);
         }
     }
 }

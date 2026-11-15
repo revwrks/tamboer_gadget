@@ -55,6 +55,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/stocks', [CStock::class, 'index']);
     Route::post('/stocks', [CStock::class, 'store']);
     Route::get('/stocks/search-imei/{imei}', [CStock::class, 'searchByImei']);
+    Route::get('/stocks/lookup-tac/{imei}', [CStock::class, 'lookupTac']);
     Route::get('/stocks/{id}', [CStock::class, 'show']);
     Route::put('/stocks/{id}', [CStock::class, 'update']);
     Route::delete('/stocks/{id}', [CStock::class, 'destroy']);
