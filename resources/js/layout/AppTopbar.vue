@@ -1,115 +1,73 @@
 <script setup>
+import { computed, onMounted, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import { useLayout } from "@/layout/composables/layout";
-import AppConfigurator from "./AppConfigurator.vue";
-import { useRouter } from "vue-router";
-import { useToast } from "primevue/usetoast";
-import { useAuth } from "@/composables/useAuth";
 
-const { onMenuToggle, toggleDarkMode, isDarkTheme } = useLayout();
+const emit = defineEmits(["register-trigger"]);
+
+const route = useRoute();
 const router = useRouter();
-const toast = useToast();
-const { logout: authLogout } = useAuth();
+const { isDarkTheme, isDesktopCollapsed, isMobileSidebarOpen, toggleDarkMode, toggleSidebar } = useLayout();
+const triggerButtonRef = ref(null);
 
-const logout = async () => {
-    await authLogout();
+const pageTitle = computed(() => route.meta?.title || "Tamboer Gadget");
+const showQuickPos = computed(() => route.name !== "penjualan");
 
-    toast.add({
-        severity: "success",
-        summary: "Logout Berhasil",
-        detail: "Sesi telah berakhir dengan aman.",
-        life: 3000,
-    });
+const isExpanded = computed(() => {
+    if (typeof window !== "undefined" && window.innerWidth >= 1024) {
+        return !isDesktopCollapsed.value;
+    }
+    return isMobileSidebarOpen.value;
+});
 
-    // Redirect to login page
-    router.push("/");
-};
+onMounted(() => {
+    emit("register-trigger", triggerButtonRef.value);
+});
 </script>
 
 <template>
-    <div class="layout-topbar">
-        <div class="layout-topbar-logo-container">
+    <header
+        class="sticky top-0 z-30 h-14 border-b border-hairline px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-4"
+        style="background: var(--glass-bar); backdrop-filter: blur(12px);"
+    >
+        <div class="flex items-center gap-3 min-w-0">
             <button
-                class="layout-menu-button layout-topbar-action"
-                @click="onMenuToggle"
-                aria-label="Toggle Menu"
+                ref="triggerButtonRef"
+                type="button"
+                class="w-9 h-9 rounded-lg border border-hairline bg-surface hover:bg-subtle text-muted hover:text-ink flex items-center justify-center transition-colors shrink-0"
+                aria-label="Alihkan navigasi"
+                :aria-expanded="isExpanded"
+                @click="toggleSidebar"
             >
-                <i class="pi pi-bars"></i>
-            </button>
-            <router-link to="/dashboard" class="layout-topbar-logo flex items-center gap-2.5">
-                <div class="w-9 h-9 rounded-xl bg-stone-900 dark:bg-stone-800 flex items-center justify-center text-amber-400 shadow-sm border border-stone-800 dark:border-stone-700">
-                    <i class="pi pi-bolt text-base"></i>
-                </div>
-                <div class="flex flex-col">
-                    <span class="font-extrabold text-base tracking-tight leading-none text-stone-900 dark:text-stone-100">
-                        Tamboer<span class="text-amber-600 dark:text-amber-400">Gadget</span>
-                    </span>
-                    <span class="text-[9px] font-semibold text-stone-400 dark:text-stone-500 uppercase tracking-widest mt-0.5">
-                        Boutique & POS
-                    </span>
-                </div>
-            </router-link>
-        </div>
-
-        <div class="layout-topbar-actions">
-            <div class="layout-config-menu">
-                <button
-                    type="button"
-                    class="layout-topbar-action"
-                    @click="toggleDarkMode"
-                    v-tooltip.bottom="isDarkTheme ? 'Mode Terang (Nordic Linen)' : 'Mode Gelap (Obsidian Stone)'"
-                    aria-label="Toggle Dark Mode"
-                >
-                    <i
-                        :class="[
-                            'pi',
-                            { 'pi-moon text-amber-400': isDarkTheme, 'pi-sun text-stone-700': !isDarkTheme },
-                        ]"
-                    ></i>
-                </button>
-                <div class="relative">
-                    <button
-                        v-styleclass="{
-                            selector: '@next',
-                            enterFromClass: 'hidden',
-                            enterActiveClass: 'animate-scalein',
-                            leaveToClass: 'hidden',
-                            leaveActiveClass: 'animate-fadeout',
-                            hideOnOutsideClick: true,
-                        }"
-                        type="button"
-                        class="layout-topbar-action layout-topbar-action-highlight"
-                        v-tooltip.bottom="'Pilihan Aksen & Palet'"
-                        aria-label="Palette Configurator"
-                    >
-                        <i class="pi pi-palette"></i>
-                    </button>
-                    <AppConfigurator />
-                </div>
-            </div>
-
-            <button
-                class="layout-topbar-menu-button layout-topbar-action"
-                v-styleclass="{
-                    selector: '@next',
-                    enterFromClass: 'hidden',
-                    enterActiveClass: 'animate-scalein',
-                    leaveToClass: 'hidden',
-                    leaveActiveClass: 'animate-fadeout',
-                    hideOnOutsideClick: true,
-                }"
-                aria-label="More Options"
-            >
-                <i class="pi pi-ellipsis-v"></i>
+                <i class="pi pi-bars text-sm"></i>
             </button>
 
-            <div class="layout-topbar-menu hidden lg:block">
-                <div class="layout-topbar-menu-content">
-                    <button type="button" class="layout-topbar-action" @click="logout" v-tooltip.bottom="'Keluar Akun'">
-                        <i class="pi pi-sign-out text-rose-500"></i>
-                        <span>Logout</span>
-                    </button>
-                </div>
-            </div>
+            <h2 class="text-sm sm:text-base font-semibold text-ink truncate">
+                {{ pageTitle }}
+            </h2>
         </div>
-    </div>
+
+        <div class="flex items-center gap-2 shrink-0">
+            <button
+                v-if="showQuickPos"
+                type="button"
+                class="min-h-[36px] px-3.5 py-1.5 rounded-lg bg-ink text-surface hover:opacity-90 text-xs font-semibold flex items-center gap-2 transition-opacity"
+                @click="router.push({ name: 'penjualan' })"
+            >
+                <i class="pi pi-shopping-bag text-xs text-accent"></i>
+                <span class="hidden sm:inline">Buka Kasir</span>
+                <span class="sm:hidden">Kasir</span>
+            </button>
+
+            <button
+                type="button"
+                class="w-9 h-9 rounded-lg border border-hairline bg-surface hover:bg-subtle text-muted hover:text-ink flex items-center justify-center transition-colors"
+                :aria-label="isDarkTheme ? 'Aktifkan mode terang' : 'Aktifkan mode gelap'"
+                v-tooltip.bottom="isDarkTheme ? 'Mode Terang' : 'Mode Gelap'"
+                @click="toggleDarkMode"
+            >
+                <i :class="isDarkTheme ? 'pi pi-sun text-sm text-accent' : 'pi pi-moon text-sm'"></i>
+            </button>
+        </div>
+    </header>
 </template>

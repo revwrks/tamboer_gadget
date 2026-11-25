@@ -31,7 +31,12 @@ class MUsers extends Authenticatable
      *
      * @var bool
      */
-    public $timestamps = false; // Set to false if you don't want to use timestamps
+    public $timestamps = true;
+
+    public function isOwner(): bool
+    {
+        return $this->level === 'owner';
+    }
 
     /**
      * The attributes that are mass assignable.

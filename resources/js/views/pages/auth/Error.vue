@@ -1,29 +1,35 @@
 <script setup>
-import FloatingConfigurator from '@/components/FloatingConfigurator.vue';
+import { useRouter } from "vue-router";
+import BrandMark from "@/components/BrandMark.vue";
+
+const router = useRouter();
 </script>
 
 <template>
-    <FloatingConfigurator />
-    <div class="bg-surface-50 dark:bg-surface-950 flex items-center justify-center min-h-screen min-w-[100vw] overflow-hidden">
-        <div class="flex flex-col items-center justify-center">
-            <div style="border-radius: 56px; padding: 0.3rem; background: linear-gradient(180deg, rgba(233, 30, 99, 0.4) 10%, rgba(33, 150, 243, 0) 30%)">
-                <div class="w-full bg-surface-0 dark:bg-surface-900 py-20 px-8 sm:px-20 flex flex-col items-center" style="border-radius: 53px">
-                    <div class="gap-4 flex flex-col items-center">
-                        <div class="flex justify-center items-center border-2 border-pink-500 rounded-full" style="height: 3.2rem; width: 3.2rem">
-                            <i class="pi pi-fw pi-exclamation-circle !text-2xl text-pink-500"></i>
-                        </div>
-                        <h1 class="text-surface-900 dark:text-surface-0 font-bold text-5xl mb-2">Error Occured</h1>
-                        <span class="text-muted-color mb-8">Requested resource is not available.</span>
-                        <img src="/public/demo/images/error/asset-error.svg" alt="Error" class="mb-8" width="80%" />
-                        <div class="col-span-12 mt-8 text-center">
-                            <Button as="router-link" label="Go to Dashboard" to="/" severity="danger" />
-                        </div>
-                    </div>
-                </div>
+    <div class="min-h-screen bg-canvas text-ink flex items-center justify-center p-4">
+        <div class="w-full max-w-md bg-surface border border-hairline rounded-2xl p-8 text-center shadow-sm space-y-5">
+            <div class="w-12 h-12 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 mx-auto flex items-center justify-center">
+                <i class="pi pi-exclamation-triangle text-xl"></i>
+            </div>
+            <div class="space-y-1.5">
+                <h1 class="text-xl font-bold text-ink">Terjadi Kesalahan</h1>
+                <p class="text-sm text-muted leading-relaxed">
+                    Permintaan tidak dapat diproses saat ini. Silakan kembali ke beranda aplikasi.
+                </p>
+            </div>
+            <div class="flex items-center justify-center gap-2 pt-2">
+                <button
+                    type="button"
+                    class="min-h-[40px] px-4 py-2 rounded-xl bg-ink text-surface text-xs font-semibold hover:opacity-90 transition-opacity"
+                    @click="router.push('/dashboard')"
+                >
+                    Kembali ke Ringkasan
+                </button>
+            </div>
+            <div class="pt-3 border-t border-hairline flex items-center justify-center gap-2 text-xs text-tertiary">
+                <BrandMark :size="14" />
+                <span>Tamboer Gadget</span>
             </div>
         </div>
     </div>
 </template>
-
-
-

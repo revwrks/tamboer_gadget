@@ -1,128 +1,93 @@
-<template>
-    <div class="flex flex-col gap-2">
-        <div class="flex items-center gap-2 w-full">
-            <span class="p-input-icon-left w-full relative">
-                <i class="pi pi-barcode absolute left-3 top-1/2 transform -translate-y-1/2 text-stone-400" />
-                <InputText 
-                    :modelValue="modelValue"
-                    @update:modelValue="handleInput"
-                    @keydown="handleKeyDown"
-                    placeholder="Scan barcode IMEI / ketik manual..." 
-                    class="w-full pl-10 text-xs font-mono"
-                    :disabled="disabled"
-                />
-            </span>
-            <Button 
-                icon="pi pi-camera" 
-                aria-label="Scan Kamera HP" 
-                @click="openCameraScanner" 
-                severity="secondary" 
-                v-tooltip.top="'Scan Barcode via Kamera HP/Webcam'" 
-                :disabled="disabled"
-                class="shrink-0 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 text-stone-800 dark:text-stone-200 border border-stone-300 dark:border-stone-700"
-            />
-        </div>
-
-        <!-- Dialog for camera scanner -->
-        <Dialog 
-            v-model:visible="isCameraOpen" 
-            modal 
-            header="Scan Barcode IMEI via Kamera" 
-            :style="{ width: '92vw', maxWidth: '480px' }" 
-            @hide="stopScanner"
-            class="rounded-2xl"
-        >
-            <div class="mb-3 text-xs text-stone-600 dark:text-stone-400 flex items-center gap-2 bg-amber-50/70 dark:bg-amber-950/40 p-2.5 rounded-xl border border-amber-200 dark:border-amber-800/40">
-                <i class="pi pi-info-circle text-amber-700 dark:text-amber-400 text-sm"></i>
-                <span>Arahkan kamera ke barcode IMEI pada dus HP atau stiker bodi perangkat.</span>
-            </div>
-            <div id="reader" width="100%" class="rounded-xl overflow-hidden shadow-sm border border-stone-200 dark:border-stone-700"></div>
-            <div class="flex justify-end gap-2 mt-4">
-                <Button label="Tutup" icon="pi pi-times" @click="isCameraOpen = false" text severity="secondary" />
-            </div>
-        </Dialog>
-    </div>
-</template>
-
 <script setup>
-import { ref, onBeforeUnmount, nextTick } from 'vue';
-import { Html5QrcodeScanner } from 'html5-qrcode';
-import InputText from 'primevue/inputtext';
-import Button from 'primevue/button';
-import Dialog from 'primevue/dialog';
+import { nextTick, onBeforeUnmount, ref } from "vue";
+import { Html5QrcodeScanner } from "html5-qrcode";
+import Button from "primevue/button";
+import Dialog from "primevue/dialog";
 
 const props = defineProps({
-    modelValue: String,
-    disabled: Boolean
+    modelValue: {
+        type: String,
+        default: "",
+    },
+    disabled: {
+        type: Boolean,
+        default: false,
+    },
+    placeholder: {
+        type: String,
+        default: "Scan barcode IMEI atau ketik manual...",
+    },
 });
-const emit = defineEmits(['update:modelValue', 'scanned']);
 
+const emit = defineEmits(["update:modelValue", "scanned"]);
+
+const readerId = `barcode-reader-${Math.random().toString(36).slice(2, 9)}`;
 const isCameraOpen = ref(false);
+const cameraError = ref("");
 let html5QrcodeScanner = null;
 
-const handleInput = (val) => {
-    emit('update:modelValue', val);
-    const cleaned = (val || '').replace(/\D/g, '');
-    // Auto-trigger if exactly 15 digits IMEI entered/pasted
+const handleInput = (event) => {
+    const val = event.target.value;
+    emit("update:modelValue", val);
+    const cleaned = (val || "").replace(/\D/g, "");
     if (cleaned.length === 15) {
-        emit('scanned', cleaned);
+        emit("scanned", cleaned);
     }
 };
 
-const handleKeyDown = (e) => {
-    if (e.key === 'Enter') {
-        e.preventDefault();
-        if (props.modelValue) {
-            emit('scanned', props.modelValue.trim());
+const handleKeyDown = (event) => {
+    if (event.key === "Enter") {
+        event.preventDefault();
+        if (props.modelValue?.trim()) {
+            emit("scanned", props.modelValue.trim());
         }
     }
 };
 
 const openCameraScanner = () => {
+    cameraError.value = "";
     isCameraOpen.value = true;
     nextTick(() => {
+        if (!window.isSecureContext && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+            cameraError.value = "Akses kamera memerlukan koneksi HTTPS atau localhost.";
+            return;
+        }
         startScanner();
     });
 };
 
 const startScanner = () => {
-    if (html5QrcodeScanner) {
-        html5QrcodeScanner.clear();
+    stopScanner();
+    try {
+        html5QrcodeScanner = new Html5QrcodeScanner(
+            readerId,
+            {
+                fps: 10,
+                qrbox: { width: 260, height: 120 },
+                supportedScanTypes: [0],
+                rememberLastUsedCamera: true,
+            },
+            false
+        );
+        html5QrcodeScanner.render(onScanSuccess, () => {});
+    } catch {
+        cameraError.value = "Kamera tidak dapat diakses. Pastikan izin kamera telah diberikan.";
     }
-    
-    html5QrcodeScanner = new Html5QrcodeScanner(
-        "reader",
-        { 
-            fps: 10, 
-            qrbox: { width: 260, height: 120 }, 
-            supportedScanTypes: [0],
-            rememberLastUsedCamera: true
-        },
-        /* verbose= */ false
-    );
-    
-    html5QrcodeScanner.render(onScanSuccess, onScanFailure);
 };
 
 const stopScanner = () => {
     if (html5QrcodeScanner) {
-        html5QrcodeScanner.clear().catch(error => {
-            console.error("Failed to clear html5QrcodeScanner. ", error);
-        });
+        html5QrcodeScanner.clear().catch(() => {});
         html5QrcodeScanner = null;
     }
 };
 
-const onScanSuccess = (decodedText, decodedResult) => {
-    const cleaned = (decodedText || '').trim();
-    emit('update:modelValue', cleaned);
-    emit('scanned', cleaned);
+const onScanSuccess = (decodedText) => {
+    const cleaned = (decodedText || "").trim();
+    emit("update:modelValue", cleaned);
+    emit("scanned", cleaned);
     isCameraOpen.value = false;
     stopScanner();
-};
-
-const onScanFailure = (error) => {
-    // Ignore frame scan failures
 };
 
 onBeforeUnmount(() => {
@@ -130,31 +95,83 @@ onBeforeUnmount(() => {
 });
 </script>
 
+<template>
+    <div class="flex flex-col gap-2">
+        <div class="flex items-center gap-2 w-full">
+            <div class="relative flex-1">
+                <i class="pi pi-barcode absolute left-3.5 top-1/2 -translate-y-1/2 text-tertiary text-sm pointer-events-none" aria-hidden="true"></i>
+                <input
+                    :value="modelValue"
+                    type="text"
+                    :placeholder="placeholder"
+                    :disabled="disabled"
+                    class="w-full min-h-[40px] pl-10 pr-3.5 py-2 rounded-xl bg-canvas border border-hairline text-sm font-mono text-ink placeholder:text-tertiary focus:outline-none focus:border-accent transition-colors disabled:opacity-50"
+                    @input="handleInput"
+                    @keydown="handleKeyDown"
+                />
+            </div>
+            <button
+                type="button"
+                class="min-h-[40px] px-3.5 rounded-xl bg-subtle hover:bg-hover text-ink border border-hairline flex items-center justify-center gap-2 text-xs font-semibold transition-colors shrink-0 disabled:opacity-50"
+                aria-label="Buka pemindai kamera"
+                v-tooltip.top="'Pindai via Kamera'"
+                :disabled="disabled"
+                @click="openCameraScanner"
+            >
+                <i class="pi pi-camera text-sm"></i>
+                <span class="hidden sm:inline">Kamera</span>
+            </button>
+        </div>
+
+        <Dialog
+            v-model:visible="isCameraOpen"
+            modal
+            header="Pindai Barcode IMEI"
+            :style="{ width: '92vw', maxWidth: '460px' }"
+            @hide="stopScanner"
+        >
+            <div class="space-y-3">
+                <p class="text-xs text-muted bg-canvas p-3 rounded-xl border border-hairline">
+                    Arahkan kamera ke barcode IMEI pada dus kemasan atau stiker bodi unit.
+                </p>
+
+                <div
+                    v-if="cameraError"
+                    role="alert"
+                    class="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-medium"
+                >
+                    {{ cameraError }}
+                </div>
+
+                <div
+                    v-else
+                    :id="readerId"
+                    class="w-full rounded-xl overflow-hidden border border-hairline bg-canvas"
+                ></div>
+            </div>
+
+            <template #footer>
+                <Button label="Tutup" icon="pi pi-times" text severity="secondary" @click="isCameraOpen = false" />
+            </template>
+        </Dialog>
+    </div>
+</template>
+
 <style scoped>
-:deep(#reader) {
+:deep([id^="barcode-reader-"]) {
     border: none !important;
 }
-:deep(#reader__scan_region) {
-    background-color: var(--surface-100);
-}
-:deep(#reader__dashboard_section_csr span) {
-    color: var(--text-color);
-}
-:deep(#reader__dashboard_section_swaplink) {
-    color: var(--primary-color);
-    text-decoration: underline;
-}
-:deep(button#html5-qrcode-button-camera-start),
-:deep(button#html5-qrcode-button-camera-stop),
-:deep(button#html5-qrcode-button-camera-permission) {
-    background-color: #1c1917 !important;
-    color: #ffffff !important;
+:deep(#html5-qrcode-button-camera-start),
+:deep(#html5-qrcode-button-camera-stop),
+:deep(#html5-qrcode-button-camera-permission) {
+    background-color: var(--text-primary) !important;
+    color: var(--bg-surface) !important;
     border: none !important;
-    padding: 6px 14px !important;
-    border-radius: 8px !important;
+    padding: 8px 14px !important;
+    border-radius: 10px !important;
     font-size: 12px !important;
     font-weight: 600 !important;
-    margin: 4px !important;
+    margin: 6px !important;
     cursor: pointer !important;
 }
 </style>

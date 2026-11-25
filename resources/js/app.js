@@ -8,12 +8,12 @@ import Aura from "@primevue/themes/aura";
 import PrimeVue from "primevue/config";
 import ConfirmationService from "primevue/confirmationservice";
 import ToastService from "primevue/toastservice";
+import Tooltip from "primevue/tooltip";
 
 import "@/assets/styles.scss";
 import "@/assets/tailwind.css";
 
-// Nordic Warm Cashmere Preset (Amber Primary + Stone Surface)
-const NordicAura = definePreset(Aura, {
+const StudioAura = definePreset(Aura, {
     semantic: {
         primary: {
             50: "#fffbeb",
@@ -26,43 +26,43 @@ const NordicAura = definePreset(Aura, {
             700: "#b45309",
             800: "#92400e",
             900: "#78350f",
-            950: "#451a03"
+            950: "#451a03",
         },
         colorScheme: {
             light: {
                 surface: {
                     0: "#ffffff",
-                    50: "#fafaf9",
-                    100: "#f5f5f4",
-                    200: "#e7e5e4",
-                    300: "#d6d3d1",
-                    400: "#a8a29e",
-                    500: "#78716c",
-                    600: "#57534e",
-                    700: "#44403c",
-                    800: "#292524",
-                    900: "#1c1917",
-                    950: "#0c0a09"
-                }
+                    50: "#fafafa",
+                    100: "#f5f5f7",
+                    200: "#e4e4e7",
+                    300: "#d1d1d6",
+                    400: "#a1a1aa",
+                    500: "#6e6e77",
+                    600: "#52525b",
+                    700: "#3f3f46",
+                    800: "#27272a",
+                    900: "#111113",
+                    950: "#09090b",
+                },
             },
             dark: {
                 surface: {
                     0: "#ffffff",
-                    50: "#fafaf9",
-                    100: "#f5f5f4",
-                    200: "#e7e5e4",
-                    300: "#d6d3d1",
-                    400: "#a8a29e",
-                    500: "#78716c",
-                    600: "#57534e",
-                    700: "#44403c",
-                    800: "#292524",
-                    900: "#1c1917",
-                    950: "#0c0a09"
-                }
-            }
-        }
-    }
+                    50: "#f5f5f7",
+                    100: "#e4e4e7",
+                    200: "#d1d1d6",
+                    300: "#a1a1aa",
+                    400: "#8e8e96",
+                    500: "#71717a",
+                    600: "#3a3a42",
+                    700: "#27272c",
+                    800: "#1f1f24",
+                    900: "#161619",
+                    950: "#0d0d0f",
+                },
+            },
+        },
+    },
 });
 
 const app = createApp(App);
@@ -70,7 +70,7 @@ const app = createApp(App);
 app.use(router);
 app.use(PrimeVue, {
     theme: {
-        preset: NordicAura,
+        preset: StudioAura,
         options: {
             darkModeSelector: ".app-dark",
         },
@@ -78,5 +78,6 @@ app.use(PrimeVue, {
 });
 app.use(ToastService);
 app.use(ConfirmationService);
+app.directive("tooltip", Tooltip);
 
 app.mount("#app");

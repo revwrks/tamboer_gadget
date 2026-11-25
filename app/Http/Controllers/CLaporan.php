@@ -2,29 +2,38 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\MPenjualan;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use App\Models\MPenjualan;
-use App\Models\MStock;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 
 class CLaporan extends Controller
 {
     public function getAvailableDates()
     {
         try {
-            $dates = MPenjualan::selectRaw('YEAR(tanggal) as year, MONTH(tanggal) as month')
-                ->groupBy('year', 'month')
-                ->orderByRaw('year DESC, month DESC')
-                ->get();
+            $rawDates = MPenjualan::whereNotNull('tanggal')
+                ->orderBy('tanggal', 'desc')
+                ->pluck('tanggal');
 
-            $dates->transform(function ($date) {
-                $date->month_name = Carbon::createFromDate($date->year, $date->month, 1)->format('F');
-                return $date;
-            });
+            $grouped = [];
+            foreach ($rawDates as $tgl) {
+                $dt = Carbon::parse($tgl);
+                $key = $dt->format('Y-m');
+                if (!isset($grouped[$key])) {
+                    $grouped[$key] = [
+                        'year' => (int) $dt->year,
+                        'month' => (int) $dt->month,
+                        'month_name' => $dt->format('F'),
+                    ];
+                }
+            }
 
-            return response()->json($dates);
+            return response()->json(array_values($grouped));
         } catch (\Exception $e) {
+            Log::error('Failed to fetch available dates', ['error' => $e->getMessage()]);
             return response()->json(['error' => 'Gagal mengambil data tanggal'], 500);
         }
     }
@@ -37,17 +46,20 @@ class CLaporan extends Controller
                 'year' => 'required|integer|min:2000',
             ]);
 
-            $sales = MPenjualan::whereYear('tanggal', $validated['year'])
-                ->whereMonth('tanggal', $validated['month'])
+            $start = Carbon::createFromDate($validated['year'], $validated['month'], 1)->startOfMonth()->toDateString();
+            $end = Carbon::createFromDate($validated['year'], $validated['month'], 1)->endOfMonth()->toDateString();
+
+            $sales = MPenjualan::whereBetween('tanggal', [$start, $end])
                 ->with(['stokHp', 'user'])
                 ->orderBy('tanggal', 'desc')
                 ->orderBy('id_penjualan', 'desc')
                 ->get();
 
             return response()->json($sales);
-        } catch (\Illuminate\Validation\ValidationException $e) {
+        } catch (ValidationException $e) {
             return response()->json(['error' => $e->errors()], 422);
         } catch (\Exception $e) {
+            Log::error('Failed to fetch sales details', ['error' => $e->getMessage()]);
             return response()->json(['error' => 'Gagal mengambil rincian penjualan'], 500);
         }
     }
@@ -55,7 +67,7 @@ class CLaporan extends Controller
     public function getMonthlyReport(Request $request)
     {
         try {
-            $validated = $request->validate([
+            $request->validate([
                 'month' => 'nullable|integer|between:1,12',
                 'year' => 'nullable|integer|min:2000',
             ]);
@@ -63,29 +75,33 @@ class CLaporan extends Controller
             $month = (int) $request->input('month', Carbon::now()->month);
             $year = (int) $request->input('year', Carbon::now()->year);
 
-            // 1. Agregasi data bulan terpilih (Pure SQL Join)
+            $start = Carbon::createFromDate($year, $month, 1)->startOfMonth()->toDateString();
+            $end = Carbon::createFromDate($year, $month, 1)->endOfMonth()->toDateString();
+
             $monthlyStats = DB::table('penjualan')
                 ->join('stok_hp', 'penjualan.id_stock', '=', 'stok_hp.id_stock')
-                ->whereYear('penjualan.tanggal', $year)
-                ->whereMonth('penjualan.tanggal', $month)
+                ->whereBetween('penjualan.tanggal', [$start, $end])
                 ->selectRaw('
                     COUNT(penjualan.id_penjualan) as phones_sold,
-                    COALESCE(SUM(penjualan.harga_jual), 0) as total_income,
+                    COALESCE(SUM(penjualan.harga_jual), 0) as gross_income,
+                    COALESCE(SUM(penjualan.diskon), 0) as total_discount,
+                    COALESCE(SUM(penjualan.harga_jual - penjualan.diskon), 0) as total_income,
                     COALESCE(SUM(stok_hp.harga_masuk), 0) as total_expenses
                 ')
                 ->first();
 
             $phonesSold = (int) ($monthlyStats->phones_sold ?? 0);
+            $grossIncome = (float) ($monthlyStats->gross_income ?? 0);
+            $totalDiscount = (float) ($monthlyStats->total_discount ?? 0);
             $totalIncome = (float) ($monthlyStats->total_income ?? 0);
             $totalExpenses = (float) ($monthlyStats->total_expenses ?? 0);
             $profit = $totalIncome - $totalExpenses;
 
-            // 2. Agregasi all-time seumur hidup toko (Pure SQL)
             $allTimeStats = DB::table('penjualan')
                 ->join('stok_hp', 'penjualan.id_stock', '=', 'stok_hp.id_stock')
                 ->selectRaw('
                     COUNT(penjualan.id_penjualan) as total_sold_ever,
-                    COALESCE(SUM(penjualan.harga_jual), 0) as total_income_ever,
+                    COALESCE(SUM(penjualan.harga_jual - penjualan.diskon), 0) as total_income_ever,
                     COALESCE(SUM(stok_hp.harga_masuk), 0) as total_expenses_ever
                 ')
                 ->first();
@@ -97,6 +113,8 @@ class CLaporan extends Controller
 
             return response()->json([
                 'phones_sold' => $phonesSold,
+                'gross_income' => $grossIncome,
+                'total_discount' => $totalDiscount,
                 'total_income' => $totalIncome,
                 'total_expenses' => $totalExpenses,
                 'profit' => $profit,
@@ -105,10 +123,11 @@ class CLaporan extends Controller
                 'total_expenses_ever' => $totalExpensesEver,
                 'total_profit_ever' => $totalProfitEver,
             ]);
-        } catch (\Illuminate\Validation\ValidationException $e) {
+        } catch (ValidationException $e) {
             return response()->json(['error' => $e->errors()], 422);
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Gagal mengambil laporan bulanan: ' . $e->getMessage()], 500);
+            Log::error('Failed to fetch monthly report', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'Gagal mengambil laporan bulanan'], 500);
         }
     }
 
@@ -120,15 +139,15 @@ class CLaporan extends Controller
                 'end_date' => 'required|date|after_or_equal:start_date',
             ]);
 
-            $startDate = Carbon::parse($validated['start_date'])->startOfDay();
-            $endDate = Carbon::parse($validated['end_date'])->endOfDay();
+            $startDate = Carbon::parse($validated['start_date'])->toDateString();
+            $endDate = Carbon::parse($validated['end_date'])->toDateString();
 
             $stats = DB::table('penjualan')
                 ->join('stok_hp', 'penjualan.id_stock', '=', 'stok_hp.id_stock')
                 ->whereBetween('penjualan.tanggal', [$startDate, $endDate])
                 ->selectRaw('
                     COUNT(penjualan.id_penjualan) as phones_sold,
-                    COALESCE(SUM(penjualan.harga_jual), 0) as total_income,
+                    COALESCE(SUM(penjualan.harga_jual - penjualan.diskon), 0) as total_income,
                     COALESCE(SUM(stok_hp.harga_masuk), 0) as total_expenses
                 ')
                 ->first();
@@ -144,9 +163,10 @@ class CLaporan extends Controller
                 'total_expenses' => $totalExpenses,
                 'profit' => $profit,
             ]);
-        } catch (\Illuminate\Validation\ValidationException $e) {
+        } catch (ValidationException $e) {
             return response()->json(['error' => $e->errors()], 422);
         } catch (\Exception $e) {
+            Log::error('Failed to fetch custom date range report', ['error' => $e->getMessage()]);
             return response()->json(['error' => 'Gagal mengambil laporan rentang tanggal'], 500);
         }
     }
@@ -157,8 +177,10 @@ class CLaporan extends Controller
             $month = (int) $request->input('month', Carbon::now()->month);
             $year = (int) $request->input('year', Carbon::now()->year);
 
-            $sales = MPenjualan::whereYear('tanggal', $year)
-                ->whereMonth('tanggal', $month)
+            $start = Carbon::createFromDate($year, $month, 1)->startOfMonth()->toDateString();
+            $end = Carbon::createFromDate($year, $month, 1)->endOfMonth()->toDateString();
+
+            $sales = MPenjualan::whereBetween('tanggal', [$start, $end])
                 ->with(['stokHp', 'user'])
                 ->get()
                 ->groupBy('id_sales');
@@ -166,10 +188,10 @@ class CLaporan extends Controller
             $result = [];
             foreach ($sales as $salesId => $items) {
                 $salesUser = $items->first()->user;
-                $totalRevenue = (float) $items->sum('harga_jual');
-                $totalExpenses = (float) $items->sum(function ($item) {
-                    return (float) ($item->stokHp->harga_masuk ?? 0);
-                });
+                $grossRevenue = (float) $items->sum('harga_jual');
+                $discounts = (float) $items->sum('diskon');
+                $totalRevenue = $grossRevenue - $discounts;
+                $totalExpenses = (float) $items->sum(fn ($item) => (float) ($item->stokHp->harga_masuk ?? 0));
                 $totalLaba = $totalRevenue - $totalExpenses;
 
                 $result[] = [
@@ -180,13 +202,15 @@ class CLaporan extends Controller
                     'total_laba' => $totalLaba,
                     'items' => $items->map(function ($item) {
                         return [
+                            'id_penjualan' => $item->id_penjualan,
                             'no_invoice' => $item->no_invoice,
-                            'tanggal' => $item->tanggal,
+                            'tanggal' => $item->tanggal?->format('Y-m-d') ?? $item->tanggal,
                             'tipe_hp' => $item->stokHp->nama ?? '-',
                             'brand' => $item->stokHp->brand ?? '-',
                             'warna' => $item->stokHp->warna ?? '-',
                             'imei' => $item->stokHp->imei ?? '-',
                             'harga_jual' => (float) $item->harga_jual,
+                            'diskon' => (float) $item->diskon,
                             'harga_masuk' => (float) ($item->stokHp->harga_masuk ?? 0),
                             'met_pem' => $item->met_pem ?? '-',
                             'nama_pembeli' => $item->nama_pembeli,
@@ -195,48 +219,89 @@ class CLaporan extends Controller
                 ];
             }
 
+            usort($result, fn ($a, $b) => $b['total_revenue'] <=> $a['total_revenue']);
+
             return response()->json($result);
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Gagal mengambil performa sales: ' . $e->getMessage()], 500);
+            Log::error('Failed to fetch sales performance', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'Gagal mengambil performa sales'], 500);
         }
     }
 
     /**
-     * Dashboard comprehensive analytics (executive summary, trends & asset valuation)
+     * Dashboard comprehensive analytics (role-scoped for owner vs sales)
      */
     public function getDashboardAnalytics(Request $request)
     {
         try {
             $month = (int) $request->input('month', Carbon::now()->month);
             $year = (int) $request->input('year', Carbon::now()->year);
+            $isOwner = $request->user()?->level === 'owner';
 
-            // 1. Data Bulan Berjalan (Revenue, Expenses, Profit, Units)
+            $currStart = Carbon::createFromDate($year, $month, 1)->startOfMonth()->toDateString();
+            $currEnd = Carbon::createFromDate($year, $month, 1)->endOfMonth()->toDateString();
+
             $currMonth = DB::table('penjualan')
                 ->join('stok_hp', 'penjualan.id_stock', '=', 'stok_hp.id_stock')
-                ->whereYear('penjualan.tanggal', $year)
-                ->whereMonth('penjualan.tanggal', $month)
+                ->whereBetween('penjualan.tanggal', [$currStart, $currEnd])
                 ->selectRaw('
                     COUNT(penjualan.id_penjualan) as total_sold,
-                    COALESCE(SUM(penjualan.harga_jual), 0) as total_revenue,
+                    COALESCE(SUM(penjualan.harga_jual - penjualan.diskon), 0) as total_revenue,
                     COALESCE(SUM(stok_hp.harga_masuk), 0) as total_expenses,
                     COALESCE(SUM(penjualan.diskon), 0) as total_discounts
                 ')
                 ->first();
 
+            $soldThisMonth = (int) ($currMonth->total_sold ?? 0);
+
+            $stockSummary = DB::table('stok_hp')
+                ->where('status', 'ada')
+                ->selectRaw("
+                    COUNT(id_stock) as total_ready,
+                    COALESCE(SUM(harga_masuk), 0) as asset_value,
+                    SUM(CASE WHEN kategori = 'gadget' THEN 1 ELSE 0 END) as gadget_ready,
+                    SUM(CASE WHEN kategori = 'aksesoris' THEN 1 ELSE 0 END) as aksesoris_ready,
+                    SUM(CASE WHEN kategori = 'sparepart' THEN 1 ELSE 0 END) as sparepart_ready
+                ")
+                ->first();
+
+            $allTime = DB::table('penjualan')
+                ->join('stok_hp', 'penjualan.id_stock', '=', 'stok_hp.id_stock')
+                ->selectRaw('
+                    COUNT(penjualan.id_penjualan) as total_sold_ever,
+                    COALESCE(SUM(penjualan.harga_jual - penjualan.diskon - stok_hp.harga_masuk), 0) as total_profit_ever
+                ')
+                ->first();
+
+            if (!$isOwner) {
+                return response()->json([
+                    'cards' => [
+                        'sold_this_month' => $soldThisMonth,
+                        'ready_stock_count' => (int) ($stockSummary->total_ready ?? 0),
+                        'ready_gadget' => (int) ($stockSummary->gadget_ready ?? 0),
+                        'ready_aksesoris' => (int) ($stockSummary->aksesoris_ready ?? 0),
+                        'ready_sparepart' => (int) ($stockSummary->sparepart_ready ?? 0),
+                        'total_sold_ever' => (int) ($allTime->total_sold_ever ?? 0),
+                    ],
+                    'trend' => null,
+                    'category_breakdown' => null,
+                ]);
+            }
+
             $revenueThisMonth = (float) ($currMonth->total_revenue ?? 0);
             $expensesThisMonth = (float) ($currMonth->total_expenses ?? 0);
             $profitThisMonth = $revenueThisMonth - $expensesThisMonth;
-            $soldThisMonth = (int) ($currMonth->total_sold ?? 0);
 
-            // 2. Data Bulan Lalu (Untuk MoM growth rate)
             $lastMonthDate = Carbon::createFromDate($year, $month, 1)->subMonth();
+            $lastStart = $lastMonthDate->copy()->startOfMonth()->toDateString();
+            $lastEnd = $lastMonthDate->copy()->endOfMonth()->toDateString();
+
             $lastMonth = DB::table('penjualan')
                 ->join('stok_hp', 'penjualan.id_stock', '=', 'stok_hp.id_stock')
-                ->whereYear('penjualan.tanggal', $lastMonthDate->year)
-                ->whereMonth('penjualan.tanggal', $lastMonthDate->month)
+                ->whereBetween('penjualan.tanggal', [$lastStart, $lastEnd])
                 ->selectRaw('
                     COUNT(penjualan.id_penjualan) as total_sold,
-                    COALESCE(SUM(penjualan.harga_jual), 0) as total_revenue,
+                    COALESCE(SUM(penjualan.harga_jual - penjualan.diskon), 0) as total_revenue,
                     COALESCE(SUM(stok_hp.harga_masuk), 0) as total_expenses
                 ')
                 ->first();
@@ -244,33 +309,31 @@ class CLaporan extends Controller
             $revenueLastMonth = (float) ($lastMonth->total_revenue ?? 0);
             $profitLastMonth = $revenueLastMonth - (float) ($lastMonth->total_expenses ?? 0);
 
-            // 3. Ringkasan Aset & Stok Ready
-            $stockSummary = DB::table('stok_hp')
-                ->where('status', 'ada')
-                ->selectRaw('
-                    COUNT(id_stock) as total_ready,
-                    COALESCE(SUM(harga_masuk), 0) as asset_value,
-                    SUM(CASE WHEN kategori = "gadget" THEN 1 ELSE 0 END) as gadget_ready,
-                    SUM(CASE WHEN kategori = "aksesoris" THEN 1 ELSE 0 END) as aksesoris_ready
-                ')
-                ->first();
-
-            // 4. Tren 6 Bulan Terakhir untuk Chart
-            $sixMonthsAgo = Carbon::createFromDate($year, $month, 1)->subMonths(5)->startOfMonth();
-            $trendQuery = DB::table('penjualan')
+            // 6-Month Trend (driver-agnostic aggregation)
+            $sixMonthsAgo = Carbon::createFromDate($year, $month, 1)->subMonths(5)->startOfMonth()->toDateString();
+            $trendRows = DB::table('penjualan')
                 ->join('stok_hp', 'penjualan.id_stock', '=', 'stok_hp.id_stock')
-                ->where('penjualan.tanggal', '>=', $sixMonthsAgo->toDateString())
-                ->where('penjualan.tanggal', '<=', Carbon::createFromDate($year, $month, 1)->endOfMonth()->toDateString())
-                ->selectRaw('
-                    DATE_FORMAT(penjualan.tanggal, "%Y-%m") as period,
-                    COUNT(penjualan.id_penjualan) as units_sold,
-                    COALESCE(SUM(penjualan.harga_jual), 0) as revenue,
-                    COALESCE(SUM(penjualan.harga_jual - stok_hp.harga_masuk), 0) as profit
-                ')
-                ->groupBy('period')
-                ->orderBy('period', 'asc')
-                ->get()
-                ->keyBy('period');
+                ->whereBetween('penjualan.tanggal', [$sixMonthsAgo, $currEnd])
+                ->select(
+                    'penjualan.tanggal',
+                    'penjualan.harga_jual',
+                    'penjualan.diskon',
+                    'stok_hp.harga_masuk'
+                )
+                ->get();
+
+            $buckets = [];
+            foreach ($trendRows as $row) {
+                $period = substr((string) $row->tanggal, 0, 7);
+                if (!isset($buckets[$period])) {
+                    $buckets[$period] = ['units' => 0, 'revenue' => 0.0, 'profit' => 0.0];
+                }
+                $netRev = (float) $row->harga_jual - (float) $row->diskon;
+                $cost = (float) $row->harga_masuk;
+                $buckets[$period]['units'] += 1;
+                $buckets[$period]['revenue'] += $netRev;
+                $buckets[$period]['profit'] += ($netRev - $cost);
+            }
 
             $chartLabels = [];
             $revenueSeries = [];
@@ -281,33 +344,37 @@ class CLaporan extends Controller
                 $d = Carbon::createFromDate($year, $month, 1)->subMonths($i);
                 $key = $d->format('Y-m');
                 $chartLabels[] = $d->format('M Y');
-                $item = $trendQuery->get($key);
-                $revenueSeries[] = $item ? (float) $item->revenue : 0;
-                $profitSeries[] = $item ? (float) $item->profit : 0;
-                $unitsSeries[] = $item ? (int) $item->units_sold : 0;
+                $bucket = $buckets[$key] ?? null;
+                $revenueSeries[] = $bucket ? $bucket['revenue'] : 0;
+                $profitSeries[] = $bucket ? $bucket['profit'] : 0;
+                $unitsSeries[] = $bucket ? $bucket['units'] : 0;
             }
 
-            // 5. Proporsi Penjualan Kategori
             $categoryStats = DB::table('penjualan')
                 ->join('stok_hp', 'penjualan.id_stock', '=', 'stok_hp.id_stock')
-                ->whereYear('penjualan.tanggal', $year)
-                ->whereMonth('penjualan.tanggal', $month)
-                ->selectRaw('
-                    COALESCE(stok_hp.kategori, "gadget") as kategori,
+                ->whereBetween('penjualan.tanggal', [$currStart, $currEnd])
+                ->selectRaw("
+                    COALESCE(stok_hp.kategori, 'gadget') as kategori,
                     COUNT(penjualan.id_penjualan) as total_qty,
-                    COALESCE(SUM(penjualan.harga_jual), 0) as total_revenue
-                ')
+                    COALESCE(SUM(penjualan.harga_jual - penjualan.diskon), 0) as total_revenue
+                ")
                 ->groupBy('kategori')
                 ->get();
 
-            // 6. Akumulasi Global Toko
-            $allTime = DB::table('penjualan')
-                ->join('stok_hp', 'penjualan.id_stock', '=', 'stok_hp.id_stock')
-                ->selectRaw('
-                    COUNT(penjualan.id_penjualan) as total_sold_ever,
-                    COALESCE(SUM(penjualan.harga_jual - stok_hp.harga_masuk), 0) as total_profit_ever
-                ')
-                ->first();
+            $categoryLabelMap = [
+                'gadget' => 'Smartphone',
+                'aksesoris' => 'Aksesoris',
+                'sparepart' => 'Sparepart',
+            ];
+
+            $catLabels = [];
+            $catData = [];
+            $catRevenues = [];
+            foreach ($categoryStats as $stat) {
+                $catLabels[] = $categoryLabelMap[$stat->kategori] ?? ucfirst((string) $stat->kategori);
+                $catData[] = (int) $stat->total_qty;
+                $catRevenues[] = (float) $stat->total_revenue;
+            }
 
             return response()->json([
                 'cards' => [
@@ -320,6 +387,7 @@ class CLaporan extends Controller
                     'ready_asset_value' => (float) ($stockSummary->asset_value ?? 0),
                     'ready_gadget' => (int) ($stockSummary->gadget_ready ?? 0),
                     'ready_aksesoris' => (int) ($stockSummary->aksesoris_ready ?? 0),
+                    'ready_sparepart' => (int) ($stockSummary->sparepart_ready ?? 0),
                     'total_sold_ever' => (int) ($allTime->total_sold_ever ?? 0),
                     'total_profit_ever' => (float) ($allTime->total_profit_ever ?? 0),
                 ],
@@ -329,11 +397,16 @@ class CLaporan extends Controller
                     'profit' => $profitSeries,
                     'units' => $unitsSeries,
                 ],
-                'category_breakdown' => $categoryStats,
+                'category_breakdown' => [
+                    'labels' => $catLabels,
+                    'data' => $catData,
+                    'revenues' => $catRevenues,
+                    'items' => $categoryStats,
+                ],
             ]);
-
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Gagal mengambil analitik dashboard: ' . $e->getMessage()], 500);
+            Log::error('Failed to fetch dashboard analytics', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'Gagal mengambil analitik dashboard'], 500);
         }
     }
 }

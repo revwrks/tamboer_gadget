@@ -1,18 +1,19 @@
 <script setup>
-import { useLayout } from "@/layout/composables/layout";
-import { onMounted, ref, computed, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import axios from "axios";
+import { useLayout } from "@/layout/composables/layout";
 import { useAuth } from "@/composables/useAuth";
+import { extractApiError, formatCurrency, formatDate } from "@/utils/formatters";
 
 const router = useRouter();
 const { isDarkTheme } = useLayout();
 const { user, isOwner } = useAuth();
 
-// Loading states
 const isLoading = ref(true);
+const loadError = ref("");
+const analyticsPayload = ref(null);
 
-// Analytics cards state
 const cards = ref({
     sold_this_month: 0,
     revenue_this_month: 0,
@@ -23,66 +24,61 @@ const cards = ref({
     ready_asset_value: 0,
     ready_gadget: 0,
     ready_aksesoris: 0,
+    ready_sparepart: 0,
     total_sold_ever: 0,
     total_profit_ever: 0,
 });
 
-// Chart states
 const trendChartData = ref(null);
 const trendChartOptions = ref(null);
 const categoryChartData = ref(null);
 const categoryChartOptions = ref(null);
 
-// Sales performance state
 const salesPerformance = ref([]);
 const salesDetailDialog = ref(false);
-const selectedSales = ref(null);
+const selectedSales = ref("");
 const selectedSalesItems = ref([]);
 
-const formatCurrency = (value) => {
-    return (parseFloat(value) || 0).toLocaleString("id-ID", {
-        style: "currency",
-        currency: "IDR",
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0,
-    });
-};
-
-const currentMonthName = computed(() => {
-    const months = [
-        "Januari", "Februari", "Maret", "April", "Mei", "Juni",
-        "Juli", "Agustus", "September", "Oktober", "November", "Desember"
-    ];
-    return months[new Date().getMonth()];
+const currentPeriodLabel = computed(() => {
+    const now = new Date();
+    return now.toLocaleDateString("id-ID", { month: "long", year: "numeric" });
 });
 
-// Configure Charts for Nordic Theme (Adaptive Light & Dark)
-const setupCharts = (trend, categoryBreakdown) => {
-    const isDark = isDarkTheme.value;
-    const textColor = isDark ? "#a8a29e" : "#78716c";
-    const textDark = isDark ? "#fafaf9" : "#1c1917";
-    const gridColor = isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.05)";
+const hasCategorySales = computed(() => {
+    const counts = categoryChartData.value?.datasets?.[0]?.data || [];
+    return counts.some((val) => val > 0);
+});
 
-    // 1. Trend Chart (Revenue vs Profit Bar/Line Combo)
+const setupCharts = () => {
+    const payload = analyticsPayload.value;
+    if (!payload || !isOwner.value) return;
+
+    const isDark = isDarkTheme.value;
+    const textMuted = isDark ? "#a1a1aa" : "#52525b";
+    const textInk = isDark ? "#f5f5f7" : "#111113";
+    const gridColor = isDark ? "rgba(255, 255, 255, 0.07)" : "rgba(0, 0, 0, 0.06)";
+    const accentColor = isDark ? "#f59e0b" : "#b45309";
+    const barColor = isDark ? "#3a3a42" : "#18181b";
+
+    const trend = payload.trend || { labels: [], revenue: [], profit: [] };
+
     trendChartData.value = {
         labels: trend.labels || [],
         datasets: [
             {
                 type: "bar",
-                label: "Omset Penjualan",
-                backgroundColor: isDark ? "#44403c" : "#1c1917",
-                hoverBackgroundColor: isDark ? "#57534e" : "#292524",
-                borderRadius: 8,
+                label: "Omset Bersih",
+                backgroundColor: barColor,
+                borderRadius: 6,
                 data: trend.revenue || [],
             },
             {
                 type: "line",
                 label: "Laba Bersih",
-                borderColor: isDark ? "#fbbf24" : "#b45309",
-                backgroundColor: isDark ? "#fbbf24" : "#b45309",
-                pointBackgroundColor: isDark ? "#fbbf24" : "#b45309",
-                pointBorderColor: isDark ? "#1c1917" : "#ffffff",
-                pointHoverBackgroundColor: isDark ? "#f59e0b" : "#92400e",
+                borderColor: accentColor,
+                backgroundColor: accentColor,
+                pointBackgroundColor: accentColor,
+                pointBorderColor: isDark ? "#161619" : "#ffffff",
                 borderWidth: 2.5,
                 tension: 0.35,
                 fill: false,
@@ -93,78 +89,57 @@ const setupCharts = (trend, categoryBreakdown) => {
 
     trendChartOptions.value = {
         maintainAspectRatio: false,
-        aspectRatio: 0.75,
         plugins: {
             legend: {
                 labels: {
-                    color: textDark,
+                    color: textInk,
                     font: { weight: 600, family: "'Plus Jakarta Sans', sans-serif" },
                 },
             },
             tooltip: {
                 callbacks: {
-                    label: function (context) {
-                        let label = context.dataset.label || "";
-                        if (label) label += ": ";
-                        if (context.parsed.y !== null) {
-                            label += formatCurrency(context.parsed.y);
-                        }
-                        return label;
-                    },
+                    label: (ctx) => `${ctx.dataset.label || ""}: ${formatCurrency(ctx.parsed.y)}`,
                 },
             },
         },
         scales: {
             x: {
-                ticks: {
-                    color: textColor,
-                    font: { weight: 500, family: "'Plus Jakarta Sans', sans-serif" },
-                },
-                grid: {
-                    display: false,
-                },
+                ticks: { color: textMuted, font: { weight: 500, family: "'Plus Jakarta Sans', sans-serif" } },
+                grid: { display: false },
             },
             y: {
                 ticks: {
-                    color: textColor,
-                    callback: function (val) {
-                        return val >= 1000000 ? val / 1000000 + " Jt" : val;
-                    },
+                    color: textMuted,
+                    callback: (val) => (val >= 1000000 ? `${val / 1000000} Jt` : val),
                     font: { family: "'JetBrains Mono', monospace" },
                 },
-                grid: {
-                    color: gridColor,
-                },
+                grid: { color: gridColor },
             },
         },
     };
 
-    // 2. Category Breakdown Doughnut Chart
+    const cat = payload.category_breakdown || { labels: [], data: [] };
     categoryChartData.value = {
-        labels: categoryBreakdown?.labels || ["Smartphone", "Aksesoris", "Sparepart"],
+        labels: cat.labels || [],
         datasets: [
             {
-                data: categoryBreakdown?.data || [0, 0, 0],
+                data: cat.data || [],
                 backgroundColor: isDark
-                    ? ["#fbbf24", "#f59e0b", "#a8a29e", "#57534e"]
-                    : ["#1c1917", "#b45309", "#d97706", "#a8a29e"],
-                hoverBackgroundColor: isDark
-                    ? ["#fcd34d", "#fbbf24", "#d6d3d1", "#78716c"]
-                    : ["#292524", "#92400e", "#b45309", "#78716c"],
+                    ? ["#f59e0b", "#a1a1aa", "#52525b"]
+                    : ["#18181b", "#b45309", "#a1a1aa"],
                 borderWidth: 2,
-                borderColor: isDark ? "#1c1917" : "#ffffff",
+                borderColor: isDark ? "#161619" : "#ffffff",
             },
         ],
     };
 
     categoryChartOptions.value = {
         maintainAspectRatio: false,
-        aspectRatio: 0.8,
         plugins: {
             legend: {
                 position: "bottom",
                 labels: {
-                    color: textDark,
+                    color: textInk,
                     usePointStyle: true,
                     font: { weight: 500, family: "'Plus Jakarta Sans', sans-serif" },
                 },
@@ -173,38 +148,37 @@ const setupCharts = (trend, categoryBreakdown) => {
     };
 };
 
-// Re-render chart on theme toggle
 watch(isDarkTheme, () => {
-    if (trendChartData.value) {
-        fetchDashboardData();
-    }
+    setupCharts();
 });
 
-// Fetch Dashboard Analytics
 const fetchDashboardData = async () => {
     isLoading.value = true;
+    loadError.value = "";
     try {
-        const [analyticsRes, perfRes] = await Promise.all([
-            axios.get("analytics/dashboard"),
-            axios.get("sales-performance"),
-        ]);
-
-        if (analyticsRes.data) {
-            cards.value = analyticsRes.data.cards;
-            setupCharts(analyticsRes.data.trend, analyticsRes.data.category_breakdown);
+        const requests = [axios.get("analytics/dashboard")];
+        if (isOwner.value) {
+            requests.push(axios.get("sales-performance"));
         }
 
-        if (perfRes.data) {
+        const [analyticsRes, perfRes] = await Promise.all(requests);
+
+        if (analyticsRes?.data) {
+            analyticsPayload.value = analyticsRes.data;
+            cards.value = analyticsRes.data.cards || cards.value;
+            setupCharts();
+        }
+
+        if (perfRes?.data) {
             salesPerformance.value = perfRes.data;
         }
     } catch (error) {
-        console.error("Error fetching dashboard data:", error);
+        loadError.value = extractApiError(error, "Gagal memuat data ringkasan.");
     } finally {
         isLoading.value = false;
     }
 };
 
-// Show detail modal when clicking on sales performance
 const showSalesDetail = (sales) => {
     selectedSales.value = sales.nama_sales;
     selectedSalesItems.value = sales.items || [];
@@ -218,282 +192,316 @@ onMounted(() => {
 
 <template>
     <div class="space-y-6">
-        <!-- Top Bar: Greeting & Quick Action Hub -->
-        <div class="bg-white border border-[#e7e5df] rounded-2xl p-6 shadow-sm">
-            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div class="flex items-center gap-3.5">
-                    <div class="w-11 h-11 rounded-xl bg-[#1c1917] text-white flex items-center justify-center font-bold text-lg shadow-sm">
-                        <i class="pi pi-bolt text-amber-400"></i>
-                    </div>
-                    <div>
-                        <h1 class="text-xl sm:text-2xl font-bold text-[#1c1917] tracking-tight">
-                            Halo, {{ user?.nama || 'Rekan' }}!
-                        </h1>
-                        <p class="text-xs text-[#78716c] mt-0.5">
-                            Dashboard Tamboer Gadget &bull; Periode <span class="font-semibold text-[#1c1917]">{{ currentMonthName }} {{ new Date().getFullYear() }}</span>
-                        </p>
-                    </div>
-                </div>
+        <!-- Quiet Header -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+                <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-ink">
+                    Halo, {{ user?.nama || "Rekan" }}
+                </h1>
+                <p class="text-xs sm:text-sm text-muted mt-0.5">
+                    Periode {{ currentPeriodLabel }}
+                </p>
+            </div>
 
-                <!-- Quick Action Buttons -->
-                <div class="flex items-center flex-wrap gap-2">
-                    <button
-                        type="button"
-                        class="px-4 py-2 rounded-xl text-xs font-semibold bg-[#1c1917] hover:bg-[#292524] text-white flex items-center gap-2 shadow-sm transition-all"
-                        @click="router.push('/pages/penjualan')"
-                    >
-                        <i class="pi pi-shopping-cart text-xs text-amber-400"></i>
-                        <span>Kasir POS</span>
-                    </button>
-                    <button
-                        type="button"
-                        class="px-4 py-2 rounded-xl text-xs font-semibold bg-[#f0ede6] hover:bg-[#e7e5df] text-[#1c1917] flex items-center gap-2 border border-[#e7e5df] transition-all"
-                        @click="router.push('/pages/stok')"
-                    >
-                        <i class="pi pi-box text-xs"></i>
-                        <span>Kelola Stok</span>
-                    </button>
-                    <button
-                        v-if="isOwner"
-                        type="button"
-                        class="px-4 py-2 rounded-xl text-xs font-semibold bg-[#f0ede6] hover:bg-[#e7e5df] text-[#1c1917] flex items-center gap-2 border border-[#e7e5df] transition-all"
-                        @click="router.push('/pages/laporan')"
-                    >
-                        <i class="pi pi-file-excel text-xs text-amber-700 dark:text-amber-400"></i>
-                        <span>Laporan Keuangan</span>
-                    </button>
-                    <button
-                        type="button"
-                        class="w-8 h-8 rounded-xl bg-[#f0ede6] hover:bg-[#e7e5df] text-[#78716c] hover:text-[#1c1917] flex items-center justify-center border border-[#e7e5df] transition-all"
-                        @click="fetchDashboardData"
-                        v-tooltip.top="'Refresh Data'"
-                    >
-                        <i class="pi pi-refresh text-xs" :class="isLoading ? 'pi-spin' : ''"></i>
-                    </button>
-                </div>
+            <div class="flex items-center flex-wrap gap-2">
+                <button
+                    type="button"
+                    class="min-h-[38px] px-4 py-2 rounded-xl text-xs font-semibold bg-ink text-surface hover:opacity-90 flex items-center gap-2 transition-opacity"
+                    @click="router.push('/pages/penjualan')"
+                >
+                    <i class="pi pi-shopping-bag text-xs text-accent"></i>
+                    <span>Buka Kasir POS</span>
+                </button>
+                <button
+                    type="button"
+                    class="min-h-[38px] px-3.5 py-2 rounded-xl text-xs font-semibold bg-surface border border-hairline hover:bg-subtle text-ink flex items-center gap-2 transition-colors"
+                    @click="router.push('/pages/stok')"
+                >
+                    <i class="pi pi-box text-xs text-muted"></i>
+                    <span>Kelola Stok</span>
+                </button>
+                <button
+                    type="button"
+                    class="w-9 h-9 rounded-xl bg-surface border border-hairline hover:bg-subtle text-muted hover:text-ink flex items-center justify-center transition-colors"
+                    aria-label="Muat ulang data"
+                    v-tooltip.top="'Muat Ulang'"
+                    @click="fetchDashboardData"
+                >
+                    <i class="pi pi-refresh text-xs" :class="isLoading ? 'pi-spin' : ''"></i>
+                </button>
             </div>
         </div>
 
-        <!-- Metric KPI Cards -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <!-- Card 1: Laba Bersih Bulan Ini (Owner) / Penjualan Bulan Ini (Staff) -->
-            <div class="bg-white border border-[#e7e5df] rounded-2xl p-5 shadow-sm">
-                <div class="flex justify-between items-start mb-3">
-                    <div>
-                        <span class="text-xs font-semibold uppercase tracking-wider text-[#78716c]">
-                            {{ isOwner ? 'Laba Bersih Bulan Ini' : 'Unit Terjual Bulan Ini' }}
-                        </span>
-                        <div class="text-2xl font-bold font-mono text-[#1c1917] mt-1">
-                            {{ isOwner ? formatCurrency(cards.profit_this_month) : cards.sold_this_month + ' Unit' }}
-                        </div>
-                    </div>
-                    <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400 flex items-center justify-center border border-amber-200/50 dark:border-amber-800/40">
-                        <i class="pi pi-wallet text-lg"></i>
-                    </div>
-                </div>
-                <div class="text-xs text-[#78716c] flex items-center gap-1.5 pt-2 border-t border-[#e7e5df]">
-                    <span v-if="cards.growth_profit_pct !== null" :class="cards.growth_profit_pct >= 0 ? 'text-amber-800 dark:text-amber-400 font-bold' : 'text-rose-600 font-bold'">
-                        {{ cards.growth_profit_pct >= 0 ? '+' : '' }}{{ cards.growth_profit_pct }}%
-                    </span>
-                    <span v-if="cards.growth_profit_pct !== null">dibanding bulan lalu</span>
-                    <span v-else>Periode aktif {{ currentMonthName }}</span>
-                </div>
+        <!-- Error State -->
+        <div
+            v-if="loadError"
+            role="alert"
+            class="bg-surface border border-rose-500/30 rounded-2xl p-5 flex items-center justify-between gap-4"
+        >
+            <div class="text-sm text-rose-600 dark:text-rose-400 font-medium">
+                {{ loadError }}
             </div>
+            <button
+                type="button"
+                class="min-h-[36px] px-3.5 py-1.5 rounded-lg bg-subtle hover:bg-hover text-ink text-xs font-semibold"
+                @click="fetchDashboardData"
+            >
+                Coba Lagi
+            </button>
+        </div>
 
-            <!-- Card 2: Omset Penjualan Bulan Ini -->
-            <div class="bg-white border border-[#e7e5df] rounded-2xl p-5 shadow-sm">
-                <div class="flex justify-between items-start mb-3">
-                    <div>
-                        <span class="text-xs font-semibold uppercase tracking-wider text-[#78716c]">
-                            {{ isOwner ? 'Omset Penjualan' : 'Unit Handphone Ready' }}
-                        </span>
-                        <div class="text-2xl font-bold font-mono text-[#1c1917] mt-1">
-                            {{ isOwner ? formatCurrency(cards.revenue_this_month) : cards.ready_gadget + ' Unit' }}
-                        </div>
-                    </div>
-                    <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-800 flex items-center justify-center border border-amber-200/50">
-                        <i class="pi pi-chart-line text-lg"></i>
-                    </div>
-                </div>
-                <div class="text-xs text-[#78716c] flex items-center gap-1.5 pt-2 border-t border-[#e7e5df]">
-                    <span class="font-bold text-[#1c1917]">{{ cards.sold_this_month }} transaksi</span>
-                    <span>telah berhasil dibukukan</span>
-                </div>
-            </div>
-
-            <!-- Card 3: Valuasi Aset Stok Ready (Modal Toko) -->
-            <div class="bg-white border border-[#e7e5df] rounded-2xl p-5 shadow-sm">
-                <div class="flex justify-between items-start mb-3">
-                    <div>
-                        <span class="text-xs font-semibold uppercase tracking-wider text-[#78716c]">
-                            {{ isOwner ? 'Nilai Aset Ready' : 'Total Stok Tersedia' }}
-                        </span>
-                        <div class="text-2xl font-bold font-mono text-[#1c1917] mt-1">
-                            {{ isOwner ? formatCurrency(cards.ready_asset_value) : cards.ready_stock_count + ' Barang' }}
-                        </div>
-                    </div>
-                    <div class="w-10 h-10 rounded-xl bg-stone-100 text-[#1c1917] flex items-center justify-center border border-[#e7e5df]">
-                        <i class="pi pi-box text-lg"></i>
-                    </div>
-                </div>
-                <div class="text-xs text-[#78716c] flex items-center gap-1.5 pt-2 border-t border-[#e7e5df]">
-                    <span class="font-bold text-[#1c1917]">{{ cards.ready_stock_count }} item</span>
-                    <span>siap dipajang & dijual</span>
-                </div>
-            </div>
-
-            <!-- Card 4: Akumulasi Unit Terjual Seumur Hidup -->
-            <div class="bg-white border border-[#e7e5df] rounded-2xl p-5 shadow-sm">
-                <div class="flex justify-between items-start mb-3">
-                    <div>
-                        <span class="text-xs font-semibold uppercase tracking-wider text-[#78716c]">
-                            Penjualan Global
-                        </span>
-                        <div class="text-2xl font-bold font-mono text-[#1c1917] mt-1">
-                            {{ cards.total_sold_ever }} <span class="text-sm font-normal text-[#78716c]">Unit</span>
-                        </div>
-                    </div>
-                    <div class="w-10 h-10 rounded-xl bg-stone-100 text-[#1c1917] flex items-center justify-center border border-[#e7e5df]">
-                        <i class="pi pi-history text-lg"></i>
-                    </div>
-                </div>
-                <div class="text-xs text-[#78716c] flex items-center gap-1.5 pt-2 border-t border-[#e7e5df]">
-                    <span v-if="isOwner">Total Laba: <b class="text-amber-800 dark:text-amber-400 font-mono">{{ formatCurrency(cards.total_profit_ever) }}</b></span>
-                    <span v-else>Rekor transaksi seumur toko</span>
-                </div>
+        <!-- Loading Skeleton -->
+        <div v-else-if="isLoading" class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            <div class="lg:col-span-5 h-36 rounded-2xl bg-surface border border-hairline animate-pulse"></div>
+            <div class="lg:col-span-7 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div class="h-36 rounded-2xl bg-surface border border-hairline animate-pulse"></div>
+                <div class="h-36 rounded-2xl bg-surface border border-hairline animate-pulse"></div>
+                <div class="h-36 rounded-2xl bg-surface border border-hairline animate-pulse"></div>
             </div>
         </div>
 
-        <!-- Charts & Visual Analytics (Owner Only) -->
-        <div v-if="isOwner" class="grid grid-cols-1 lg:grid-cols-12 gap-5">
-            <!-- Left: 6-Month Trend (Omset vs Laba) -->
-            <div class="lg:col-span-8 bg-white border border-[#e7e5df] rounded-2xl p-6 shadow-sm">
+        <!-- OWNER VIEW -->
+        <template v-else-if="isOwner">
+            <!-- Asymmetric Financial Hierarchy -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                <!-- Featured Net Profit Card -->
+                <div class="lg:col-span-5 bg-surface border border-hairline rounded-2xl p-6 flex flex-col justify-between">
+                    <div class="flex items-start justify-between gap-3">
+                        <div>
+                            <span class="text-xs font-semibold text-muted">Laba Bersih Bulan Ini</span>
+                            <div class="text-2xl sm:text-3xl font-bold font-mono tabular-nums text-ink mt-1.5">
+                                {{ formatCurrency(cards.profit_this_month) }}
+                            </div>
+                        </div>
+                        <span
+                            v-if="cards.growth_profit_pct !== null"
+                            class="px-2.5 py-1 rounded-lg text-xs font-semibold tabular-nums"
+                            :class="
+                                cards.growth_profit_pct >= 0
+                                    ? 'bg-accent-soft text-accent-ink'
+                                    : 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
+                            "
+                        >
+                            {{ cards.growth_profit_pct >= 0 ? "+" : "" }}{{ cards.growth_profit_pct }}% MoM
+                        </span>
+                    </div>
+                    <div class="mt-5 pt-3.5 border-t border-hairline flex items-center justify-between text-xs text-muted">
+                        <span>Akumulasi Laba Global</span>
+                        <span class="font-mono tabular-nums font-semibold text-ink">
+                            {{ formatCurrency(cards.total_profit_ever) }}
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Secondary Operational & Financial Metrics -->
+                <div class="lg:col-span-7 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div class="bg-surface border border-hairline rounded-2xl p-5 flex flex-col justify-between">
+                        <div>
+                            <span class="text-xs font-semibold text-muted">Omset Bersih</span>
+                            <div class="text-xl font-bold font-mono tabular-nums text-ink mt-1.5">
+                                {{ formatCurrency(cards.revenue_this_month) }}
+                            </div>
+                        </div>
+                        <div class="mt-4 pt-3 border-t border-hairline text-xs text-muted tabular-nums">
+                            <span class="font-semibold text-ink">{{ cards.sold_this_month }}</span> unit terjual bulan ini
+                        </div>
+                    </div>
+
+                    <div class="bg-surface border border-hairline rounded-2xl p-5 flex flex-col justify-between">
+                        <div>
+                            <span class="text-xs font-semibold text-muted">Nilai Aset Ready</span>
+                            <div class="text-xl font-bold font-mono tabular-nums text-ink mt-1.5">
+                                {{ formatCurrency(cards.ready_asset_value) }}
+                            </div>
+                        </div>
+                        <div class="mt-4 pt-3 border-t border-hairline text-xs text-muted tabular-nums">
+                            <span class="font-semibold text-ink">{{ cards.ready_stock_count }}</span> item siap jual
+                        </div>
+                    </div>
+
+                    <div class="bg-surface border border-hairline rounded-2xl p-5 flex flex-col justify-between">
+                        <div>
+                            <span class="text-xs font-semibold text-muted">Total Unit Terjual</span>
+                            <div class="text-xl font-bold font-mono tabular-nums text-ink mt-1.5">
+                                {{ cards.total_sold_ever }} <span class="text-xs font-normal text-muted">Unit</span>
+                            </div>
+                        </div>
+                        <div class="mt-4 pt-3 border-t border-hairline text-xs text-muted tabular-nums">
+                            {{ cards.ready_gadget }} HP &bull; {{ cards.ready_aksesoris }} Aksesoris
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Row -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                <div class="lg:col-span-8 bg-surface border border-hairline rounded-2xl p-6">
+                    <div class="mb-4">
+                        <h2 class="text-base font-bold text-ink">Tren Omset &amp; Laba 6 Bulan Terakhir</h2>
+                        <p class="text-xs text-muted mt-0.5">Perbandingan omset bersih dan laba bersih bulanan</p>
+                    </div>
+                    <div style="height: 290px">
+                        <Chart
+                            v-if="trendChartData"
+                            type="bar"
+                            :data="trendChartData"
+                            :options="trendChartOptions"
+                            class="w-full h-full"
+                        />
+                    </div>
+                </div>
+
+                <div class="lg:col-span-4 bg-surface border border-hairline rounded-2xl p-6 flex flex-col">
+                    <div class="mb-4">
+                        <h2 class="text-base font-bold text-ink">Kategori Terjual Bulan Ini</h2>
+                        <p class="text-xs text-muted mt-0.5">Proporsi unit per kategori produk</p>
+                    </div>
+                    <div class="flex-1 flex items-center justify-center" style="min-height: 290px">
+                        <Chart
+                            v-if="categoryChartData && hasCategorySales"
+                            type="doughnut"
+                            :data="categoryChartData"
+                            :options="categoryChartOptions"
+                            class="w-full h-full"
+                        />
+                        <div v-else class="text-center text-xs text-muted px-4">
+                            Belum ada transaksi penjualan pada bulan ini.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sales Team Performance -->
+            <div class="bg-surface border border-hairline rounded-2xl p-6">
                 <div class="flex items-center justify-between mb-4">
                     <div>
-                        <h2 class="text-base font-bold text-[#1c1917]">
-                            Tren Omset & Laba Bersih (6 Bulan Terakhir)
-                        </h2>
-                        <p class="text-xs text-[#78716c]">Grafik perbandingan performa penjualan vs laba bersih bulanan</p>
-                    </div>
-                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800/40">
-                        Aktif
-                    </span>
-                </div>
-                <div style="height: 300px;">
-                    <Chart
-                        v-if="trendChartData"
-                        type="bar"
-                        :data="trendChartData"
-                        :options="trendChartOptions"
-                        class="w-full h-full"
-                    />
-                    <div v-else class="h-full flex items-center justify-center text-[#78716c]">
-                        Memuat data grafik...
+                        <h2 class="text-base font-bold text-ink">Performa Tim Penjualan</h2>
+                        <p class="text-xs text-muted mt-0.5">Kontribusi penjualan bulan {{ currentPeriodLabel }}</p>
                     </div>
                 </div>
-            </div>
 
-            <!-- Right: Sales by Category Doughnut -->
-            <div class="lg:col-span-4 bg-white border border-[#e7e5df] rounded-2xl p-6 shadow-sm">
-                <div class="mb-4">
-                    <h2 class="text-base font-bold text-[#1c1917]">
-                        Proporsi Kategori Terjual
-                    </h2>
-                    <p class="text-xs text-[#78716c]">Distribusi unit terjual bulan ini</p>
-                </div>
-                <div style="height: 300px;">
-                    <Chart
-                        v-if="categoryChartData"
-                        type="doughnut"
-                        :data="categoryChartData"
-                        :options="categoryChartOptions"
-                        class="w-full h-full"
-                    />
-                    <div v-else class="h-full flex items-center justify-center text-[#78716c]">
-                        Memuat data kategori...
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Leaderboard & Sales Performance (Owner Only) -->
-        <div v-if="isOwner" class="bg-white border border-[#e7e5df] rounded-2xl p-6 shadow-sm">
-            <div class="flex items-center justify-between mb-4">
-                <div>
-                    <h2 class="text-base font-bold text-[#1c1917]">
-                        Performa Kasir & Sales &bull; {{ currentMonthName }} {{ new Date().getFullYear() }}
-                    </h2>
-                    <p class="text-xs text-[#78716c]">Peringkat kontribusi penjualan per karyawan pada bulan berjalan</p>
-                </div>
-            </div>
-
-            <DataTable
-                :value="salesPerformance"
-                dataKey="id_sales"
-                responsiveLayout="scroll"
-                stripedRows
-                class="p-datatable-sm"
-            >
-                <template #empty>
-                    <div class="text-center py-6 text-[#78716c]">
-                        Belum ada data transaksi untuk bulan ini.
-                    </div>
-                </template>
-
-                <Column field="nama_sales" header="Nama Karyawan" sortable>
-                    <template #body="{ data }">
-                        <div class="flex items-center gap-3">
-                            <div class="w-7 h-7 rounded-lg bg-[#f0ede6] text-[#1c1917] flex items-center justify-center font-bold text-xs">
-                                {{ data.nama_sales ? data.nama_sales.charAt(0).toUpperCase() : 'S' }}
-                            </div>
-                            <span class="font-semibold text-xs text-[#1c1917]">{{ data.nama_sales }}</span>
+                <DataTable
+                    :value="salesPerformance"
+                    dataKey="id_sales"
+                    responsiveLayout="scroll"
+                    stripedRows
+                    class="p-datatable-sm"
+                >
+                    <template #empty>
+                        <div class="text-center py-8 text-xs text-muted">
+                            Belum ada transaksi penjualan yang tercatat pada bulan ini.
                         </div>
                     </template>
-                </Column>
 
-                <Column field="jumlah_unit" header="Unit Terjual" sortable style="width: 10rem">
-                    <template #body="{ data }">
-                        <button
-                            type="button"
-                            class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-[#f0ede6] hover:bg-[#e7e5df] text-[#1c1917] border border-[#e7e5df]"
-                            v-tooltip.top="'Klik untuk lihat rincian unit'"
-                            @click="showSalesDetail(data)"
-                        >
-                            {{ data.jumlah_unit }} Unit
-                        </button>
-                    </template>
-                </Column>
+                    <Column field="nama_sales" header="Karyawan" sortable>
+                        <template #body="{ data }">
+                            <div class="flex items-center gap-2.5">
+                                <div class="w-7 h-7 rounded-lg bg-subtle border border-hairline text-ink flex items-center justify-center font-bold text-xs">
+                                    {{ data.nama_sales ? data.nama_sales.charAt(0).toUpperCase() : "S" }}
+                                </div>
+                                <span class="font-semibold text-xs text-ink">{{ data.nama_sales }}</span>
+                            </div>
+                        </template>
+                    </Column>
 
-                <Column field="total_revenue" header="Total Omset" sortable style="min-width: 11rem">
-                    <template #body="{ data }">
-                        <span class="font-medium font-mono text-xs text-[#1c1917]">
-                            {{ formatCurrency(data.total_revenue) }}
-                        </span>
-                    </template>
-                </Column>
+                    <Column field="jumlah_unit" header="Unit Terjual" sortable style="width: 10rem">
+                        <template #body="{ data }">
+                            <button
+                                type="button"
+                                class="px-2.5 py-1 rounded-lg text-xs font-semibold tabular-nums bg-subtle hover:bg-hover text-ink border border-hairline transition-colors"
+                                @click="showSalesDetail(data)"
+                            >
+                                {{ data.jumlah_unit }} Unit
+                            </button>
+                        </template>
+                    </Column>
 
-                <Column field="total_laba" header="Kontribusi Laba" sortable style="min-width: 11rem">
-                    <template #body="{ data }">
-                        <span class="font-bold font-mono text-xs text-amber-800 dark:text-amber-400">
-                            {{ formatCurrency(data.total_laba) }}
-                        </span>
-                    </template>
-                </Column>
-            </DataTable>
-        </div>
+                    <Column field="total_revenue" header="Omset Bersih" sortable style="min-width: 11rem">
+                        <template #body="{ data }">
+                            <span class="font-mono tabular-nums text-xs text-ink">
+                                {{ formatCurrency(data.total_revenue) }}
+                            </span>
+                        </template>
+                    </Column>
+
+                    <Column field="total_laba" header="Kontribusi Laba" sortable style="min-width: 11rem">
+                        <template #body="{ data }">
+                            <span class="font-bold font-mono tabular-nums text-xs text-accent-ink">
+                                {{ formatCurrency(data.total_laba) }}
+                            </span>
+                        </template>
+                    </Column>
+                </DataTable>
+            </div>
+        </template>
+
+        <!-- SALES / KASIR OPERATIONAL VIEW -->
+        <template v-else>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="bg-surface border border-hairline rounded-2xl p-5">
+                    <span class="text-xs font-semibold text-muted">Unit Terjual Bulan Ini</span>
+                    <div class="text-2xl font-bold font-mono tabular-nums text-ink mt-1.5">
+                        {{ cards.sold_this_month }} <span class="text-xs font-normal text-muted">Unit</span>
+                    </div>
+                </div>
+                <div class="bg-surface border border-hairline rounded-2xl p-5">
+                    <span class="text-xs font-semibold text-muted">Smartphone Ready</span>
+                    <div class="text-2xl font-bold font-mono tabular-nums text-ink mt-1.5">
+                        {{ cards.ready_gadget }} <span class="text-xs font-normal text-muted">Unit</span>
+                    </div>
+                </div>
+                <div class="bg-surface border border-hairline rounded-2xl p-5">
+                    <span class="text-xs font-semibold text-muted">Total Stok Tersedia</span>
+                    <div class="text-2xl font-bold font-mono tabular-nums text-ink mt-1.5">
+                        {{ cards.ready_stock_count }} <span class="text-xs font-normal text-muted">Item</span>
+                    </div>
+                </div>
+                <div class="bg-surface border border-hairline rounded-2xl p-5">
+                    <span class="text-xs font-semibold text-muted">Total Penjualan Toko</span>
+                    <div class="text-2xl font-bold font-mono tabular-nums text-ink mt-1.5">
+                        {{ cards.total_sold_ever }} <span class="text-xs font-normal text-muted">Unit</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <button
+                    type="button"
+                    class="text-left bg-surface border border-hairline hover:border-hairline-strong rounded-2xl p-6 transition-colors flex items-center justify-between gap-4"
+                    @click="router.push('/pages/penjualan')"
+                >
+                    <div>
+                        <h2 class="text-base font-bold text-ink">Mulai Transaksi Kasir</h2>
+                        <p class="text-xs text-muted mt-1">Pindai IMEI, hitung kembalian, dan cetak struk thermal.</p>
+                    </div>
+                    <i class="pi pi-arrow-right text-muted"></i>
+                </button>
+
+                <button
+                    type="button"
+                    class="text-left bg-surface border border-hairline hover:border-hairline-strong rounded-2xl p-6 transition-colors flex items-center justify-between gap-4"
+                    @click="router.push('/pages/stok')"
+                >
+                    <div>
+                        <h2 class="text-base font-bold text-ink">Cek &amp; Tambah Inventaris</h2>
+                        <p class="text-xs text-muted mt-1">Lihat ketersediaan stok etalase atau catat unit masuk.</p>
+                    </div>
+                    <i class="pi pi-arrow-right text-muted"></i>
+                </button>
+            </div>
+        </template>
 
         <!-- Sales Detail Modal -->
         <Dialog
             v-model:visible="salesDetailDialog"
-            :style="{ width: '800px', maxWidth: '95vw' }"
+            :style="{ width: '820px', maxWidth: '95vw' }"
             :header="'Rincian Penjualan: ' + selectedSales"
             modal
             dismissableMask
-            class="rounded-2xl bg-white"
         >
             <DataTable
                 :value="selectedSalesItems"
-                dataKey="no_invoice"
+                dataKey="id_penjualan"
                 :rows="10"
                 :paginator="selectedSalesItems.length > 10"
                 class="p-datatable-sm"
@@ -503,47 +511,46 @@ onMounted(() => {
             >
                 <Column field="tanggal" header="Tanggal" sortable style="min-width: 7rem">
                     <template #body="{ data }">
-                        <span class="text-xs text-[#44403c]">{{ new Date(data.tanggal).toLocaleDateString("id-ID") }}</span>
+                        <span class="text-xs text-muted">{{ formatDate(data.tanggal) }}</span>
                     </template>
                 </Column>
-                <Column field="no_invoice" header="No Faktur" style="min-width: 9rem">
+                <Column field="no_invoice" header="No. Faktur" style="min-width: 9rem">
                     <template #body="{ data }">
-                        <span class="font-mono text-xs font-semibold text-[#1c1917]">{{ data.no_invoice }}</span>
+                        <span class="font-mono text-xs font-semibold text-ink">{{ data.no_invoice }}</span>
                     </template>
                 </Column>
                 <Column field="brand" header="Brand" sortable>
                     <template #body="{ data }">
-                        <span class="text-xs text-amber-800 font-semibold uppercase">{{ data.brand }}</span>
+                        <span class="text-xs font-semibold uppercase text-accent-ink">{{ data.brand }}</span>
                     </template>
                 </Column>
-                <Column field="tipe_hp" header="Item / Model" sortable style="min-width: 10rem">
+                <Column field="tipe_hp" header="Model" sortable style="min-width: 10rem">
                     <template #body="{ data }">
-                        <span class="text-xs font-semibold text-[#1c1917]">{{ data.tipe_hp }}</span>
+                        <span class="text-xs font-semibold text-ink">{{ data.tipe_hp }}</span>
                     </template>
                 </Column>
                 <Column field="imei" header="IMEI / Seri" style="min-width: 9rem">
                     <template #body="{ data }">
-                        <span class="font-mono text-xs text-[#78716c]">{{ data.imei || '-' }}</span>
+                        <span class="font-mono text-xs text-muted">{{ data.imei || "-" }}</span>
                     </template>
                 </Column>
                 <Column field="harga_jual" header="Harga Jual" sortable style="min-width: 9rem">
                     <template #body="{ data }">
-                        <span class="font-bold font-mono text-xs text-[#1c1917]">{{ formatCurrency(data.harga_jual) }}</span>
+                        <span class="font-bold font-mono tabular-nums text-xs text-ink">
+                            {{ formatCurrency(data.harga_jual) }}
+                        </span>
                     </template>
                 </Column>
                 <Column field="met_pem" header="Metode" sortable>
                     <template #body="{ data }">
-                        <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-[#f0ede6] text-[#44403c]">{{ data.met_pem }}</span>
+                        <span class="text-[11px] font-semibold uppercase px-2 py-0.5 rounded bg-subtle text-muted">
+                            {{ data.met_pem }}
+                        </span>
                     </template>
                 </Column>
             </DataTable>
             <template #footer>
-                <Button
-                    label="Tutup"
-                    icon="pi pi-times"
-                    severity="secondary"
-                    @click="salesDetailDialog = false"
-                />
+                <Button label="Tutup" icon="pi pi-times" severity="secondary" text @click="salesDetailDialog = false" />
             </template>
         </Dialog>
     </div>

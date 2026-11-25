@@ -1,9 +1,20 @@
 import { ref, computed } from "vue";
 import axios from "axios";
 
-// Shared reactive state across components
+function safeParseUser(raw) {
+    if (!raw) return null;
+    try {
+        return JSON.parse(raw);
+    } catch {
+        localStorage.removeItem("user");
+        return null;
+    }
+}
+
 const token = ref(localStorage.getItem("token") || "");
-const user = ref(JSON.parse(localStorage.getItem("user") || "null"));
+const user = ref(safeParseUser(localStorage.getItem("user")));
+const sessionVerified = ref(false);
+let verifyPromise = null;
 
 export function useAuth() {
     const isAuthenticated = computed(() => !!token.value);
@@ -13,6 +24,7 @@ export function useAuth() {
     const setAuth = (newToken, newUser) => {
         token.value = newToken;
         user.value = newUser;
+        sessionVerified.value = true;
         localStorage.setItem("token", newToken);
         localStorage.setItem("user", JSON.stringify(newUser));
         if (window.axios) {
@@ -23,6 +35,7 @@ export function useAuth() {
     const clearAuth = () => {
         token.value = "";
         user.value = null;
+        sessionVerified.value = false;
         localStorage.removeItem("token");
         localStorage.removeItem("user");
         if (window.axios) {
@@ -35,9 +48,8 @@ export function useAuth() {
             if (token.value) {
                 await axios.post("logout");
             }
-        } catch (error) {
-            // Ignore logout API failure and proceed with local cleanup
-            console.warn("Logout API failed or session expired:", error);
+        } catch {
+            // Ignore API errors on logout and always clear local session
         } finally {
             clearAuth();
         }
@@ -48,6 +60,7 @@ export function useAuth() {
         try {
             const response = await axios.get("me");
             user.value = response.data;
+            sessionVerified.value = true;
             localStorage.setItem("user", JSON.stringify(response.data));
             return response.data;
         } catch (error) {
@@ -58,9 +71,26 @@ export function useAuth() {
         }
     };
 
+    const verifySession = async () => {
+        if (!token.value) {
+            sessionVerified.value = false;
+            return null;
+        }
+        if (sessionVerified.value && user.value) {
+            return user.value;
+        }
+        if (!verifyPromise) {
+            verifyPromise = fetchMe().finally(() => {
+                verifyPromise = null;
+            });
+        }
+        return verifyPromise;
+    };
+
     return {
         token,
         user,
+        sessionVerified,
         isAuthenticated,
         isOwner,
         isSales,
@@ -68,5 +98,6 @@ export function useAuth() {
         clearAuth,
         logout,
         fetchMe,
+        verifySession,
     };
 }

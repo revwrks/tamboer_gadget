@@ -9,19 +9,13 @@ import Components from "unplugin-vue-components/vite";
 export default ({ mode }) => {
     const env = loadEnv(mode, process.cwd(), "");
     const rawAssetUrl = env.ASSET_URL || "";
-    const assetUrl = (rawAssetUrl === "null" || rawAssetUrl === "undefined") ? "" : rawAssetUrl;
+    const assetUrl = rawAssetUrl === "null" || rawAssetUrl === "undefined" ? "" : rawAssetUrl;
     const base = assetUrl
         ? (assetUrl.endsWith("/") ? assetUrl : assetUrl + "/") + "build/"
         : "/build/";
 
-    console.log("--- VITE BUILD CONFIG ---");
-    console.log("Mode:", mode);
-    console.log("ASSET_URL from env:", assetUrl);
-    console.log("Computed Base:", base);
-    console.log("-------------------------");
-
     return defineConfig({
-        base: mode === "production" ? "/build/" : "/",
+        base: mode === "production" ? base : "/",
         optimizeDeps: {
             noDiscovery: true,
         },

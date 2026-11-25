@@ -1,21 +1,37 @@
 <script setup>
-import { FilterMatchMode } from "@primevue/core/api";
+import { computed, onMounted, ref } from "vue";
 import axios from "axios";
 import { useToast } from "primevue/usetoast";
-import { onMounted, ref, computed } from "vue";
+import { useAuth } from "@/composables/useAuth";
+import { extractApiError, formatDate } from "@/utils/formatters";
 
-const filters = ref({
-    global: { value: null, matchMode: FilterMatchMode.CONTAINS },
-});
+const toast = useToast();
+const { user: currentUser } = useAuth();
 
 const users = ref([]);
+const isLoading = ref(false);
+const isSaving = ref(false);
+const searchQuery = ref("");
+
+const userDialog = ref(false);
+const deleteUserDialog = ref(false);
+const userForm = ref({});
+const submitted = ref(false);
 
 const fetchUsers = async () => {
+    isLoading.value = true;
     try {
         const response = await axios.get("users");
         users.value = response.data;
     } catch (error) {
-        console.error("Error fetching users:", error);
+        toast.add({
+            severity: "error",
+            summary: "Gagal Memuat",
+            detail: extractApiError(error, "Gagal mengambil daftar akun."),
+            life: 4000,
+        });
+    } finally {
+        isLoading.value = false;
     }
 };
 
@@ -23,255 +39,151 @@ onMounted(() => {
     fetchUsers();
 });
 
-const toast = useToast();
-const dt = ref();
-const userDialog = ref(false);
-const deleteUserDialog = ref(false);
-const deleteUsersDialog = ref(false);
-const user = ref({});
-const selectedUsers = ref();
-
 const filteredData = computed(() => {
-    const filterValue = filters.value.global.value?.toLowerCase() || "";
-    return users.value.filter((item) => {
-        return (
-            item.username.toLowerCase().includes(filterValue) ||
-            item.nama.toLowerCase().includes(filterValue) ||
-            item.level.toLowerCase().includes(filterValue)
-        );
-    });
+    const q = searchQuery.value.toLowerCase().trim();
+    if (!q) return users.value;
+    return users.value.filter(
+        (item) =>
+            (item.username || "").toLowerCase().includes(q) ||
+            (item.nama || "").toLowerCase().includes(q) ||
+            (item.level || "").toLowerCase().includes(q)
+    );
 });
 
-const submitted = ref(false);
-
-function openNew() {
-    user.value = {};
+const openNew = () => {
+    userForm.value = {
+        username: "",
+        nama: "",
+        level: "sales",
+        password: "",
+    };
     submitted.value = false;
     userDialog.value = true;
-}
+};
 
-function hideDialog() {
-    userDialog.value = false;
+const editUser = (usr) => {
+    userForm.value = { ...usr, password: "" };
     submitted.value = false;
-}
+    userDialog.value = true;
+};
 
-function saveUser() {
+const passwordInvalid = computed(() => {
+    if (!userForm.value.id_user) {
+        return !userForm.value.password || userForm.value.password.length < 6;
+    }
+    return !!userForm.value.password && userForm.value.password.length < 6;
+});
+
+const saveUser = async () => {
     submitted.value = true;
 
-    if (
-        user?.value.username?.trim() &&
-        user?.value.nama?.trim() &&
-        user?.value.level
-    ) {
-        // Prepare the user data to be sent
-        const levelVal = typeof user.value.level === "object" && user.value.level !== null
-            ? user.value.level.value
-            : user.value.level;
+    if (!userForm.value.username?.trim() || !userForm.value.nama?.trim() || !userForm.value.level || passwordInvalid.value) {
+        return;
+    }
 
-        const userData = {
-            ...user.value,
-            level: levelVal,
-        };
+    isSaving.value = true;
+    const payload = {
+        username: userForm.value.username.trim(),
+        nama: userForm.value.nama.trim(),
+        level: userForm.value.level,
+    };
+    if (userForm.value.password) {
+        payload.password = userForm.value.password;
+    }
 
-        if (user.value.id_user) {
-            // Update existing user
-            axios
-                .put(`users/${user.value.id_user}`, userData)
-                .then(() => {
-                    const index = findIndexById(user.value.id_user);
-                    users.value[index] = user.value;
-                    fetchUsers();
-                    toast.add({
-                        severity: "success",
-                        summary: "Successful",
-                        detail: "User Updated",
-                        life: 3000,
-                    });
-                })
-                .catch((error) => {
-                    toast.add({
-                        severity: "error",
-                        summary: "Error",
-                        detail: "Failed to update user",
-                        life: 3000,
-                    });
-                });
+    try {
+        if (userForm.value.id_user) {
+            await axios.put(`users/${userForm.value.id_user}`, payload);
+            toast.add({ severity: "success", summary: "Berhasil", detail: "Data akun diperbarui.", life: 3000 });
         } else {
-            // Create new user
-            axios
-                .post("users", userData)
-                .then((response) => {
-                    user.value.id_user = response.data.user.id_user;
-                    users.value.push(user.value);
-                    fetchUsers();
-                    toast.add({
-                        severity: "success",
-                        summary: "Successful",
-                        detail: "User Created",
-                        life: 3000,
-                    });
-                })
-                .catch((error) => {
-                    toast.add({
-                        severity: "error",
-                        summary: "Error",
-                        detail: "Failed to create user",
-                        life: 3000,
-                    });
-                });
+            await axios.post("users", payload);
+            toast.add({ severity: "success", summary: "Berhasil", detail: "Akun baru ditambahkan.", life: 3000 });
         }
-
         userDialog.value = false;
-        user.value = {};
+        userForm.value = {};
+        await fetchUsers();
+    } catch (error) {
+        toast.add({
+            severity: "error",
+            summary: "Gagal Simpan",
+            detail: extractApiError(error, "Gagal menyimpan akun pengguna."),
+            life: 4000,
+        });
+    } finally {
+        isSaving.value = false;
     }
-}
+};
 
-function editUser(usr) {
-    user.value = { ...usr };
-    userDialog.value = true;
-}
-
-function confirmDeleteUser(usr) {
-    user.value = usr;
+const confirmDeleteUser = (usr) => {
+    userForm.value = usr;
     deleteUserDialog.value = true;
-}
+};
 
-function deleteUser() {
-    axios
-        .delete(`users/${user.value.id_user}`)
-        .then(() => {
-            users.value = users.value.filter(
-                (val) => val.id_user !== user.value.id_user,
-            );
-            fetchUsers();
-            toast.add({
-                severity: "success",
-                summary: "Successful",
-                detail: "User Deleted",
-                life: 3000,
-            });
-        })
-        .catch((error) => {
-            toast.add({
-                severity: "error",
-                summary: "Error",
-                detail: "Failed to delete user",
-                life: 3000,
-            });
+const executeDeleteUser = async () => {
+    try {
+        await axios.delete(`users/${userForm.value.id_user}`);
+        toast.add({ severity: "success", summary: "Dihapus", detail: "Akun pengguna berhasil dihapus.", life: 3000 });
+        deleteUserDialog.value = false;
+        userForm.value = {};
+        await fetchUsers();
+    } catch (error) {
+        toast.add({
+            severity: "error",
+            summary: "Gagal Hapus",
+            detail: extractApiError(error, "Gagal menghapus akun."),
+            life: 4000,
         });
-
-    deleteUserDialog.value = false;
-    user.value = {};
-}
-
-function findIndexById(id) {
-    let index = -1;
-    for (let i = 0; i < users.value.length; i++) {
-        if (users.value[i].id_user === id) {
-            index = i;
-            break;
-        }
     }
-    return index;
-}
-
-function exportCSV() {
-    dt.value.exportCSV();
-}
-
-function confirmDeleteSelected() {
-    deleteUsersDialog.value = true;
-}
-
-function deleteSelectedUsers() {
-    const ids = selectedUsers.value.map((user) => user.id_user);
-    const requests = ids.map((id) => axios.delete(`users/${id}`));
-
-    Promise.all(requests)
-        .then(() => {
-            users.value = users.value.filter(
-                (val) => !ids.includes(val.id_user),
-            );
-            fetchUsers();
-            toast.add({
-                severity: "success",
-                summary: "Successful",
-                detail: "Users Deleted",
-                life: 3000,
-            });
-        })
-        .catch((error) => {
-            toast.add({
-                severity: "error",
-                summary: "Error",
-                detail: "Failed to delete selected users",
-                life: 3000,
-            });
-        });
-
-    deleteUsersDialog.value = false;
-    selectedUsers.value = null;
-}
+};
 </script>
 
 <template>
     <div class="space-y-6">
-        <!-- Header Panel -->
-        <div class="bg-white border border-[#e7e5df] rounded-2xl p-5 shadow-sm">
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div class="flex items-center gap-3.5">
-                    <div class="w-11 h-11 rounded-xl bg-[#1c1917] text-white flex items-center justify-center font-bold text-lg shadow-sm">
-                        <i class="pi pi-users text-amber-400"></i>
-                    </div>
-                    <div>
-                        <h1 class="text-xl sm:text-2xl font-bold text-[#1c1917] tracking-tight">
-                            Manajemen Karyawan & Hak Akses
-                        </h1>
-                        <p class="text-xs text-[#78716c] mt-0.5">
-                            Kelola akun pengguna, level owner, dan kasir toko
-                        </p>
-                    </div>
-                </div>
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+                <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-ink">
+                    Tim &amp; Hak Akses
+                </h1>
+                <p class="text-xs sm:text-sm text-muted mt-0.5">
+                    Kelola akun Owner dan Kasir / Sales toko
+                </p>
+            </div>
 
-                <div class="flex items-center gap-2">
-                    <button
-                        type="button"
-                        class="px-4 py-2 rounded-xl text-xs font-semibold bg-[#1c1917] hover:bg-[#292524] text-white flex items-center gap-2 shadow-sm transition-all"
-                        @click="openNew"
-                    >
-                        <i class="pi pi-plus text-xs"></i>
-                        <span>Tambah Pengguna</span>
-                    </button>
-                    <button
-                        type="button"
-                        class="w-8 h-8 rounded-xl bg-[#f0ede6] hover:bg-[#e7e5df] text-[#78716c] hover:text-[#1c1917] flex items-center justify-center border border-[#e7e5df] transition-all"
-                        @click="fetchUsers"
-                        v-tooltip.top="'Refresh Data'"
-                    >
-                        <i class="pi pi-refresh text-xs"></i>
-                    </button>
-                </div>
+            <div class="flex items-center gap-2">
+                <button
+                    type="button"
+                    class="min-h-[38px] px-4 py-2 rounded-xl text-xs font-semibold bg-ink text-surface hover:opacity-90 flex items-center gap-2 transition-opacity"
+                    @click="openNew"
+                >
+                    <i class="pi pi-plus text-xs"></i>
+                    <span>Tambah Pengguna</span>
+                </button>
+                <button
+                    type="button"
+                    class="w-9 h-9 rounded-xl bg-surface border border-hairline hover:bg-subtle text-muted hover:text-ink flex items-center justify-center transition-colors"
+                    aria-label="Muat ulang daftar akun"
+                    @click="fetchUsers"
+                >
+                    <i class="pi pi-refresh text-xs" :class="isLoading ? 'pi-spin' : ''"></i>
+                </button>
             </div>
         </div>
 
-        <!-- Users Table -->
-        <div class="bg-white border border-[#e7e5df] rounded-2xl p-5 shadow-sm space-y-4">
-            <div class="flex items-center justify-between gap-4 pb-2 border-b border-[#e7e5df]">
-                <h2 class="text-base font-bold text-[#1c1917]">Daftar Akun Terdaftar</h2>
-
+        <div class="bg-surface border border-hairline rounded-2xl p-5 space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <h2 class="text-sm font-bold text-ink">Daftar Akun Terdaftar ({{ filteredData.length }})</h2>
                 <div class="relative w-full sm:w-64">
-                    <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-[#78716c] text-xs"></i>
+                    <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-tertiary text-xs pointer-events-none"></i>
                     <input
-                        v-model="filters.global.value"
+                        v-model="searchQuery"
                         type="text"
-                        placeholder="Cari username, nama..."
-                        class="w-full text-xs pl-8 pr-4 py-2 rounded-xl bg-[#faf9f5] border border-[#e7e5df] text-[#1c1917] focus:outline-none focus:border-[#1c1917]"
+                        placeholder="Cari nama atau username..."
+                        class="w-full min-h-[38px] text-xs pl-8 pr-3.5 py-2 rounded-xl bg-canvas border border-hairline text-ink placeholder:text-tertiary focus:outline-none focus:border-accent"
                     />
                 </div>
             </div>
 
             <DataTable
-                ref="dt"
                 :value="filteredData"
                 dataKey="id_user"
                 :paginator="true"
@@ -281,58 +193,63 @@ function deleteSelectedUsers() {
                 class="p-datatable-sm"
             >
                 <template #empty>
-                    <div class="text-center py-8 text-[#78716c]">
-                        Tidak ada data akun yang ditemukan.
+                    <div class="text-center py-8 text-xs text-muted">
+                        Tidak ada akun pengguna yang sesuai dengan pencarian.
                     </div>
                 </template>
 
-                <!-- Avatar & Nama -->
-                <Column field="nama" header="Nama Pengguna" sortable style="min-width: 14rem">
+                <Column field="nama" header="Pengguna" sortable style="min-width: 14rem">
                     <template #body="{ data }">
                         <div class="flex items-center gap-3">
-                            <div class="w-8 h-8 rounded-xl bg-[#f0ede6] text-[#1c1917] flex items-center justify-center font-bold text-xs border border-[#e7e5df]">
-                                {{ data.nama ? data.nama.charAt(0).toUpperCase() : 'U' }}
+                            <div class="w-8 h-8 rounded-lg bg-subtle border border-hairline text-ink flex items-center justify-center font-bold text-xs">
+                                {{ data.nama ? data.nama.charAt(0).toUpperCase() : "U" }}
                             </div>
                             <div>
-                                <span class="font-semibold text-xs text-[#1c1917] block">{{ data.nama }}</span>
-                                <span class="text-[11px] text-[#78716c] font-mono">@{{ data.username }}</span>
+                                <div class="font-semibold text-xs text-ink">
+                                    {{ data.nama }}
+                                    <span
+                                        v-if="data.id_user === currentUser?.id_user"
+                                        class="ml-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-accent-soft text-accent-ink"
+                                    >
+                                        Anda
+                                    </span>
+                                </div>
+                                <div class="text-xs text-muted font-mono">@{{ data.username }}</div>
                             </div>
                         </div>
                     </template>
                 </Column>
 
-                <!-- Role / Level -->
-                <Column field="level" header="Hak Akses" sortable style="min-width: 8rem">
+                <Column field="level" header="Hak Akses" sortable style="min-width: 9rem">
                     <template #body="{ data }">
                         <span
-                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase border"
-                            :class="data.level === 'owner'
-                                ? 'bg-amber-50 text-amber-800 border-amber-200'
-                                : 'bg-stone-100 text-stone-700 border-stone-200'"
+                            class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold uppercase border"
+                            :class="
+                                data.level === 'owner'
+                                    ? 'bg-accent-soft text-accent-ink border-amber-500/30'
+                                    : 'bg-subtle text-muted border-hairline'
+                            "
                         >
-                            <i :class="data.level === 'owner' ? 'pi pi-crown text-[10px] mr-1 text-amber-600' : 'pi pi-user text-[10px] mr-1'"></i>
+                            <i :class="data.level === 'owner' ? 'pi pi-shield text-[10px]' : 'pi pi-user text-[10px]'"></i>
                             {{ data.level }}
                         </span>
                     </template>
                 </Column>
 
-                <!-- Tanggal Dibuat -->
                 <Column field="created_at" header="Terdaftar" sortable style="min-width: 9rem">
                     <template #body="{ data }">
-                        <span class="text-xs text-[#78716c]">
-                            {{ data.created_at ? new Date(data.created_at).toLocaleDateString('id-ID') : '-' }}
-                        </span>
+                        <span class="text-xs text-muted">{{ formatDate(data.created_at) }}</span>
                     </template>
                 </Column>
 
-                <!-- Actions -->
-                <Column header="Aksi" style="min-width: 8rem" :exportable="false">
+                <Column header="Aksi" style="min-width: 7rem" :exportable="false">
                     <template #body="{ data }">
                         <div class="flex items-center gap-1.5">
                             <button
                                 type="button"
-                                class="w-8 h-8 rounded-lg bg-[#f0ede6] text-[#78716c] hover:bg-[#1c1917] hover:text-white flex items-center justify-center transition-colors"
-                                v-tooltip.top="'Edit Karyawan'"
+                                class="w-8 h-8 rounded-lg bg-subtle text-muted hover:text-ink hover:bg-hover flex items-center justify-center transition-colors"
+                                aria-label="Edit akun"
+                                v-tooltip.top="'Edit Akun'"
                                 @click="editUser(data)"
                             >
                                 <i class="pi pi-pencil text-xs"></i>
@@ -340,8 +257,10 @@ function deleteSelectedUsers() {
 
                             <button
                                 type="button"
-                                class="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white flex items-center justify-center transition-colors"
-                                v-tooltip.top="'Hapus Akun'"
+                                class="w-8 h-8 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-600 hover:text-white flex items-center justify-center transition-colors disabled:opacity-35 disabled:cursor-not-allowed"
+                                :disabled="data.id_user === currentUser?.id_user"
+                                aria-label="Hapus akun"
+                                v-tooltip.top="data.id_user === currentUser?.id_user ? 'Akun aktif Anda' : 'Hapus Akun'"
                                 @click="confirmDeleteUser(data)"
                             >
                                 <i class="pi pi-trash text-xs"></i>
@@ -352,77 +271,88 @@ function deleteSelectedUsers() {
             </DataTable>
         </div>
 
-        <!-- User Dialog Modal -->
+        <!-- Add / Edit User Dialog -->
         <Dialog
             v-model:visible="userDialog"
             modal
-            :header="user.id_user ? 'Perbarui Akun Karyawan' : 'Tambah Akun Baru'"
-            :style="{ width: '450px', maxWidth: '95vw' }"
-            class="rounded-2xl bg-white"
+            :header="userForm.id_user ? 'Perbarui Akun Karyawan' : 'Tambah Akun Baru'"
+            :style="{ width: '440px', maxWidth: '95vw' }"
         >
             <div class="space-y-4 pt-2 text-xs">
                 <div>
-                    <label class="block font-semibold text-[#78716c] mb-1">Username</label>
+                    <label for="user-username" class="block font-semibold text-muted mb-1.5">Username</label>
                     <input
-                        v-model.trim="user.username"
+                        id="user-username"
+                        v-model.trim="userForm.username"
                         type="text"
                         placeholder="Username login"
-                        class="w-full text-xs p-2.5 rounded-xl bg-white border border-[#e7e5df] text-[#1c1917] focus:outline-none focus:border-[#1c1917]"
+                        class="w-full min-h-[40px] text-sm px-3 py-2 rounded-xl bg-canvas border border-hairline text-ink focus:outline-none focus:border-accent"
                     />
-                    <small v-if="submitted && !user.username" class="text-rose-600 mt-1 block">Username wajib diisi.</small>
+                    <small v-if="submitted && !userForm.username" class="text-rose-600 dark:text-rose-400 mt-1 block">
+                        Username wajib diisi.
+                    </small>
                 </div>
 
                 <div>
-                    <label class="block font-semibold text-[#78716c] mb-1">Nama Lengkap</label>
+                    <label for="user-nama" class="block font-semibold text-muted mb-1.5">Nama Lengkap</label>
                     <input
-                        v-model.trim="user.nama"
+                        id="user-nama"
+                        v-model.trim="userForm.nama"
                         type="text"
                         placeholder="Nama karyawan"
-                        class="w-full text-xs p-2.5 rounded-xl bg-white border border-[#e7e5df] text-[#1c1917] focus:outline-none focus:border-[#1c1917]"
+                        class="w-full min-h-[40px] text-sm px-3 py-2 rounded-xl bg-canvas border border-hairline text-ink focus:outline-none focus:border-accent"
                     />
-                    <small v-if="submitted && !user.nama" class="text-rose-600 mt-1 block">Nama wajib diisi.</small>
+                    <small v-if="submitted && !userForm.nama" class="text-rose-600 dark:text-rose-400 mt-1 block">
+                        Nama lengkap wajib diisi.
+                    </small>
                 </div>
 
                 <div>
-                    <label class="block font-semibold text-[#78716c] mb-1">Level / Hak Akses</label>
-                    <div class="grid grid-cols-2 gap-2 bg-[#f0ede6] p-1 rounded-xl border border-[#e7e5df]">
+                    <span class="block font-semibold text-muted mb-1.5">Hak Akses</span>
+                    <div class="grid grid-cols-2 gap-1.5 bg-subtle p-1 rounded-xl border border-hairline">
                         <button
                             type="button"
-                            class="py-2 rounded-lg text-xs font-semibold transition-all capitalize"
-                            :class="(user.level === 'owner' || user.level?.value === 'owner') ? 'bg-[#1c1917] text-white shadow-sm' : 'text-[#78716c]'"
-                            @click="user.level = 'owner'"
+                            class="min-h-[36px] rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
+                            :class="userForm.level === 'owner' ? 'bg-ink text-surface' : 'text-muted hover:text-ink'"
+                            @click="userForm.level = 'owner'"
                         >
-                            👑 Owner
+                            <i class="pi pi-shield text-xs"></i>
+                            <span>Owner</span>
                         </button>
                         <button
                             type="button"
-                            class="py-2 rounded-lg text-xs font-semibold transition-all capitalize"
-                            :class="(user.level === 'sales' || user.level?.value === 'sales') ? 'bg-[#1c1917] text-white shadow-sm' : 'text-[#78716c]'"
-                            @click="user.level = 'sales'"
+                            class="min-h-[36px] rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
+                            :class="userForm.level === 'sales' ? 'bg-ink text-surface' : 'text-muted hover:text-ink'"
+                            @click="userForm.level = 'sales'"
                         >
-                            👤 Sales / Kasir
+                            <i class="pi pi-user text-xs"></i>
+                            <span>Sales / Kasir</span>
                         </button>
                     </div>
                 </div>
 
                 <div>
-                    <label class="block font-semibold text-[#78716c] mb-1">
+                    <label for="user-password" class="block font-semibold text-muted mb-1.5">
                         Kata Sandi
-                        <span v-if="user.id_user" class="text-[10px] text-[#78716c] font-normal">(Kosongkan jika tidak ingin mengubah)</span>
+                        <span v-if="userForm.id_user" class="font-normal text-tertiary">(Kosongkan jika tidak diubah)</span>
                     </label>
                     <input
-                        v-model="user.password"
+                        id="user-password"
+                        v-model="userForm.password"
                         type="password"
                         placeholder="Minimal 6 karakter"
-                        class="w-full text-xs p-2.5 rounded-xl bg-white border border-[#e7e5df] text-[#1c1917] focus:outline-none focus:border-[#1c1917]"
+                        class="w-full min-h-[40px] text-sm px-3 py-2 rounded-xl bg-canvas border border-hairline text-ink focus:outline-none focus:border-accent"
                     />
+                    <small v-if="submitted && passwordInvalid" class="text-rose-600 dark:text-rose-400 mt-1 block">
+                        Kata sandi minimal 6 karakter.
+                    </small>
                 </div>
             </div>
 
             <template #footer>
                 <div class="flex justify-end gap-2 pt-2">
                     <Button label="Batal" text severity="secondary" @click="userDialog = false" />
-                    <Button label="Simpan" severity="primary" class="font-bold bg-[#1c1917] hover:bg-[#292524] text-white border-0" @click="saveUser" />
+                    <Button label="Simpan" :loading="isSaving" @click="saveUser" />
                 </div>
             </template>
         </Dialog>
@@ -433,28 +363,24 @@ function deleteSelectedUsers() {
             header="Hapus Akun Pengguna"
             modal
             :style="{ width: '420px', maxWidth: '90vw' }"
-            class="rounded-2xl bg-white"
         >
-            <div class="flex items-center gap-3 pt-2">
-                <div class="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0 border border-rose-200">
+            <div class="flex items-start gap-3 pt-2">
+                <div class="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
                     <i class="pi pi-exclamation-triangle text-lg"></i>
                 </div>
                 <div>
-                    <p class="font-bold text-[#1c1917]">Hapus akun ini?</p>
-                    <p class="text-xs text-[#78716c] mt-1">
-                        Pengguna <b>{{ user.nama }} (@{{ user.username }})</b> akan dihapus secara permanen.
+                    <p class="font-bold text-sm text-ink">Hapus akun ini?</p>
+                    <p class="text-xs text-muted mt-1 leading-relaxed">
+                        Pengguna <b>{{ userForm.nama }} (@{{ userForm.username }})</b> akan dihapus permanen.
                     </p>
                 </div>
             </div>
             <template #footer>
                 <div class="flex justify-end gap-2">
                     <Button label="Batal" text severity="secondary" @click="deleteUserDialog = false" />
-                    <Button label="Hapus Akun" severity="danger" @click="deleteUser" />
+                    <Button label="Hapus Akun" severity="danger" @click="executeDeleteUser" />
                 </div>
             </template>
         </Dialog>
     </div>
 </template>
-
-
-

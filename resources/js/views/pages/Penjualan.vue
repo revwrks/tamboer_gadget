@@ -2,23 +2,24 @@
 import { FilterMatchMode } from "@primevue/core/api";
 import axios from "axios";
 import { useToast } from "primevue/usetoast";
-import { onMounted, ref, computed } from "vue";
+import { computed, onMounted, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import BarcodeScanner from "../../components/BarcodeScanner.vue";
 import ThermalReceipt from "../../components/ThermalReceipt.vue";
 import { useAuth } from "@/composables/useAuth";
+import { extractApiError, formatCurrency, formatDate } from "@/utils/formatters";
 
+const route = useRoute();
+const router = useRouter();
 const { user, isOwner } = useAuth();
 const toast = useToast();
 
-// View mode: 'pos' (Kasir Cepat) atau 'history' (Riwayat Transaksi)
 const activeTab = ref("pos");
 
-// Data state
 const penjualan = ref([]);
 const stokItemsList = ref([]);
 const isLoading = ref(false);
 
-// Filters & Search
 const posSearch = ref("");
 const posCategory = ref("all");
 const posCondition = ref("all");
@@ -26,14 +27,12 @@ const historyFilters = ref({
     global: { value: null, matchMode: FilterMatchMode.CONTAINS },
 });
 
-// Modal state
 const mobileCartDrawer = ref(false);
 const receiptDialog = ref(false);
 const currentReceipt = ref({});
 const deleteDialog = ref(false);
 const selectedSaleToDelete = ref(null);
 
-// POS Cart & Checkout state
 const cart = ref([]);
 const paymentMethod = ref("Cash");
 const discount = ref(0);
@@ -43,23 +42,17 @@ const buyerPhone = ref("");
 const saleNotes = ref("");
 const isSubmitting = ref(false);
 
-// Format currency
-const formatCurrency = (value) => {
-    return (parseFloat(value) || 0).toLocaleString("id-ID", {
-        style: "currency",
-        currency: "IDR",
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0,
-    });
-};
-
-// Fetch data
 const fetchPenjualan = async () => {
     try {
         const response = await axios.get("penjualan");
         penjualan.value = response.data;
     } catch (error) {
-        console.error("Error fetching penjualan:", error);
+        toast.add({
+            severity: "error",
+            summary: "Gagal Memuat",
+            detail: extractApiError(error, "Gagal memuat riwayat transaksi."),
+            life: 4000,
+        });
     }
 };
 
@@ -69,13 +62,17 @@ const fetchStokItems = async () => {
         const response = await axios.get("stocks");
         stokItemsList.value = response.data;
     } catch (error) {
-        console.error("Error fetching stok items:", error);
+        toast.add({
+            severity: "error",
+            summary: "Gagal Memuat",
+            detail: extractApiError(error, "Gagal mengambil katalog stok."),
+            life: 4000,
+        });
     } finally {
         isLoading.value = false;
     }
 };
 
-// Ready stocks filtered for POS Catalog
 const filteredReadyStocks = computed(() => {
     let list = stokItemsList.value.filter((s) => s.status === "ada");
 
@@ -88,21 +85,21 @@ const filteredReadyStocks = computed(() => {
     }
 
     if (posSearch.value.trim()) {
-        const q = posSearch.value.toLowerCase();
-        list = list.filter((s) =>
-            (s.imei || "").toLowerCase().includes(q) ||
-            (s.nama || "").toLowerCase().includes(q) ||
-            (s.brand || "").toLowerCase().includes(q) ||
-            (s.warna || "").toLowerCase().includes(q) ||
-            (s.ram || "").toLowerCase().includes(q) ||
-            (s.storage || "").toLowerCase().includes(q)
+        const q = posSearch.value.toLowerCase().trim();
+        list = list.filter(
+            (s) =>
+                (s.imei || "").toLowerCase().includes(q) ||
+                (s.nama || "").toLowerCase().includes(q) ||
+                (s.brand || "").toLowerCase().includes(q) ||
+                (s.warna || "").toLowerCase().includes(q) ||
+                (s.ram || "").toLowerCase().includes(q) ||
+                (s.storage || "").toLowerCase().includes(q)
         );
     }
 
     return list;
 });
 
-// Category counts
 const categoryCounts = computed(() => {
     const ready = stokItemsList.value.filter((s) => s.status === "ada");
     return {
@@ -113,13 +110,21 @@ const categoryCounts = computed(() => {
     };
 });
 
-// Cart Calculations
 const cartSubtotal = computed(() => {
     return cart.value.reduce((acc, item) => acc + (parseFloat(item.harga_jual) || 0), 0);
 });
 
+const normalizedDiscount = computed(() => {
+    const val = parseFloat(discount.value) || 0;
+    return Math.max(0, Math.min(val, cartSubtotal.value));
+});
+
+const isDiscountExcessive = computed(() => {
+    return (parseFloat(discount.value) || 0) > cartSubtotal.value && cartSubtotal.value > 0;
+});
+
 const cartTotal = computed(() => {
-    return Math.max(0, cartSubtotal.value - (parseFloat(discount.value) || 0));
+    return Math.max(0, cartSubtotal.value - normalizedDiscount.value);
 });
 
 const changeDue = computed(() => {
@@ -132,18 +137,24 @@ const isUnderpaid = computed(() => {
     return (parseFloat(cashReceived.value) || 0) < cartTotal.value;
 });
 
-// Cart Actions
-const isItemInCart = (id_stock) => {
-    return cart.value.some((c) => c.id_stock === id_stock);
-};
+const quickCashOptions = computed(() => {
+    const total = cartTotal.value;
+    if (total <= 0) return [50000, 100000, 200000, 500000];
+    const step = total >= 1000000 ? 100000 : 50000;
+    const base = Math.ceil(total / step) * step;
+    const candidates = [base, base + step, base + step * 2, base + step * 5];
+    return [...new Set(candidates)].filter((amt) => amt >= total).slice(0, 4);
+});
+
+const isItemInCart = (id_stock) => cart.value.some((c) => c.id_stock === id_stock);
 
 const addToCart = (stock) => {
     if (isItemInCart(stock.id_stock)) {
-        toast.add({ severity: "warn", summary: "Perhatian", detail: "Unit ini sudah ada di keranjang!", life: 1500 });
+        toast.add({ severity: "warn", summary: "Perhatian", detail: "Unit ini sudah ada di keranjang.", life: 1500 });
         return;
     }
     cart.value.push({ ...stock });
-    toast.add({ severity: "success", summary: "Ditambahkan", detail: `${stock.nama} masuk ke keranjang`, life: 1200 });
+    toast.add({ severity: "success", summary: "Ditambahkan", detail: `${stock.nama} masuk keranjang.`, life: 1200 });
 };
 
 const removeFromCart = (index) => {
@@ -166,7 +177,7 @@ const handleBarcodeScanned = (scannedImei) => {
         addToCart(match);
         posSearch.value = "";
     } else {
-        toast.add({ severity: "error", summary: "Tidak Ditemukan", detail: "Tidak ada unit ready dengan IMEI tersebut", life: 3000 });
+        toast.add({ severity: "error", summary: "Tidak Ditemukan", detail: "Tidak ada unit ready dengan IMEI tersebut.", life: 3000 });
     }
 };
 
@@ -178,15 +189,19 @@ const setQuickMoney = (amount) => {
     cashReceived.value = amount;
 };
 
-// Checkout
 const processCheckout = async () => {
     if (cart.value.length === 0) {
-        toast.add({ severity: "warn", summary: "Keranjang Kosong", detail: "Pilih minimal 1 barang untuk dijual!", life: 2500 });
+        toast.add({ severity: "warn", summary: "Keranjang Kosong", detail: "Pilih minimal 1 barang.", life: 2500 });
+        return;
+    }
+
+    if (isDiscountExcessive.value) {
+        toast.add({ severity: "error", summary: "Diskon Tidak Valid", detail: "Diskon melebihi subtotal belanja.", life: 3000 });
         return;
     }
 
     if (paymentMethod.value === "Cash" && isUnderpaid.value) {
-        toast.add({ severity: "error", summary: "Uang Kurang", detail: "Nominal uang yang diterima kurang dari total belanja!", life: 3000 });
+        toast.add({ severity: "error", summary: "Uang Kurang", detail: "Nominal uang diterima kurang dari total akhir.", life: 3000 });
         return;
     }
 
@@ -200,8 +215,8 @@ const processCheckout = async () => {
             })),
             id_sales: user.value?.id_user,
             met_pem: paymentMethod.value,
-            diskon: parseFloat(discount.value) || 0,
-            uang_bayar: paymentMethod.value === "Cash" ? (parseFloat(cashReceived.value) || cartTotal.value) : cartTotal.value,
+            diskon: normalizedDiscount.value,
+            uang_bayar: paymentMethod.value === "Cash" ? parseFloat(cashReceived.value) || cartTotal.value : cartTotal.value,
             kembalian: changeDue.value,
             nama_pembeli: buyerName.value || null,
             no_hp_pembeli: buyerPhone.value || null,
@@ -211,24 +226,23 @@ const processCheckout = async () => {
         const res = await axios.post("penjualan/checkout", payload);
         const invoiceData = res.data.data;
 
-        toast.add({ severity: "success", summary: "Checkout Sukses!", detail: `Transaksi ${invoiceData.no_invoice} berhasil disimpan`, life: 3000 });
+        toast.add({
+            severity: "success",
+            summary: "Checkout Berhasil",
+            detail: `Faktur ${invoiceData.no_invoice} tersimpan.`,
+            life: 3000,
+        });
 
-        // Refresh data
-        fetchPenjualan();
-        fetchStokItems();
-
-        // Tutup drawer mobile & bersihkan keranjang
+        await Promise.all([fetchPenjualan(), fetchStokItems()]);
         mobileCartDrawer.value = false;
         clearCart();
 
-        // Buka struk thermal
         await printInvoice(invoiceData.no_invoice);
-
     } catch (error) {
         toast.add({
             severity: "error",
             summary: "Checkout Gagal",
-            detail: error.response?.data?.error || "Gagal memproses transaksi",
+            detail: extractApiError(error, "Gagal memproses transaksi."),
             life: 5000,
         });
     } finally {
@@ -236,18 +250,16 @@ const processCheckout = async () => {
     }
 };
 
-// Print Invoice Modal
 const printInvoice = async (no_invoice) => {
     try {
         const res = await axios.get(`penjualan/invoice/${encodeURIComponent(no_invoice)}`);
         currentReceipt.value = res.data;
         receiptDialog.value = true;
-    } catch (error) {
-        toast.add({ severity: "error", summary: "Gagal Cetak", detail: "Invoice tidak ditemukan atau rusak", life: 3000 });
+    } catch {
+        toast.add({ severity: "error", summary: "Gagal Cetak", detail: "Invoice tidak ditemukan.", life: 3000 });
     }
 };
 
-// Delete Sale & Revert Stock
 const confirmDeleteSale = (sale) => {
     selectedSaleToDelete.value = sale;
     deleteDialog.value = true;
@@ -257,328 +269,263 @@ const executeDeleteSale = async () => {
     if (!selectedSaleToDelete.value) return;
     try {
         await axios.delete(`penjualan/${selectedSaleToDelete.value.id_penjualan}`);
-        toast.add({ severity: "success", summary: "Dihapus", detail: "Transaksi dihapus & status stok dikembalikan ke etalase", life: 3000 });
+        toast.add({
+            severity: "success",
+            summary: "Dibatalkan",
+            detail: "Transaksi dihapus & unit dikembalikan ke etalase.",
+            life: 3000,
+        });
         deleteDialog.value = false;
         selectedSaleToDelete.value = null;
-        fetchPenjualan();
-        fetchStokItems();
+        await Promise.all([fetchPenjualan(), fetchStokItems()]);
     } catch (error) {
-        toast.add({ severity: "error", summary: "Gagal Hapus", detail: error.response?.data?.error || "Gagal menghapus transaksi", life: 4000 });
+        toast.add({
+            severity: "error",
+            summary: "Gagal Hapus",
+            detail: extractApiError(error, "Gagal menghapus transaksi."),
+            life: 4000,
+        });
     }
 };
 
-onMounted(() => {
-    fetchPenjualan();
-    fetchStokItems();
+onMounted(async () => {
+    await Promise.all([fetchPenjualan(), fetchStokItems()]);
+
+    const addStockId = Number(route.query.addStock);
+    if (addStockId) {
+        const target = stokItemsList.value.find((s) => s.id_stock === addStockId && s.status === "ada");
+        if (target) {
+            activeTab.value = "pos";
+            addToCart(target);
+        }
+        router.replace({ query: {} });
+    }
 });
 </script>
 
 <template>
-    <div class="space-y-6 pb-24 lg:pb-8">
-        <!-- Top Navigation Bar / Mode Selector -->
-        <div class="bg-white border border-[#e7e5df] rounded-2xl p-4 sm:p-5 shadow-sm">
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <!-- Title & Kasir Badge -->
-                <div class="flex items-center gap-3.5">
-                    <div class="w-11 h-11 rounded-xl bg-[#1c1917] text-white flex items-center justify-center font-bold text-lg shadow-sm">
-                        <i class="pi pi-bolt text-amber-400"></i>
-                    </div>
-                    <div>
-                        <div class="flex items-center gap-2.5">
-                            <h1 class="text-xl sm:text-2xl font-bold text-[#1c1917] tracking-tight">
-                                Tamboer POS
-                            </h1>
-                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800/40">
-                                <span class="w-1.5 h-1.5 rounded-full bg-amber-500 mr-1.5"></span>
-                                Kasir Online
-                            </span>
-                        </div>
-                        <p class="text-xs text-[#78716c] mt-0.5">
-                            Kasir: <span class="font-semibold text-[#1c1917]">{{ user?.nama || 'Petugas' }}</span> &bull; {{ filteredReadyStocks.length }} item siap jual
-                        </p>
-                    </div>
-                </div>
+    <div class="space-y-6 pb-24 lg:pb-6">
+        <!-- Header & Mode Switcher -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+                <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-ink">
+                    Kasir POS
+                </h1>
+                <p class="text-xs sm:text-sm text-muted mt-0.5 tabular-nums">
+                    Kasir: <span class="font-semibold text-ink">{{ user?.nama || "Petugas" }}</span>
+                    &bull; {{ filteredReadyStocks.length }} unit siap jual
+                </p>
+            </div>
 
-                <!-- Tab Segment Controls (Nordic Pill Style) -->
-                <div class="inline-flex p-1 rounded-xl bg-[#f0ede6] border border-[#e7e5df]">
-                    <button
-                        type="button"
-                        class="px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center gap-2"
-                        :class="activeTab === 'pos'
-                            ? 'bg-[#1c1917] text-white shadow-sm'
-                            : 'text-[#78716c] hover:text-[#1c1917]'"
-                        @click="activeTab = 'pos'"
+            <div class="inline-flex p-1 rounded-xl bg-subtle border border-hairline self-start sm:self-auto">
+                <button
+                    type="button"
+                    class="min-h-[36px] px-4 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-colors"
+                    :class="activeTab === 'pos' ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink'"
+                    @click="activeTab = 'pos'"
+                >
+                    <i class="pi pi-shopping-bag text-xs"></i>
+                    <span>Kasir</span>
+                    <span
+                        v-if="cart.length > 0"
+                        class="px-1.5 py-0.5 rounded-full text-[10px] bg-accent text-white font-bold tabular-nums"
                     >
-                        <i class="pi pi-shopping-bag"></i>
-                        Kasir POS
-                        <span v-if="cart.length > 0" class="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-amber-400 text-[#1c1917] font-bold">
-                            {{ cart.length }}
-                        </span>
-                    </button>
+                        {{ cart.length }}
+                    </span>
+                </button>
 
-                    <button
-                        type="button"
-                        class="px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center gap-2"
-                        :class="activeTab === 'history'
-                            ? 'bg-[#1c1917] text-white shadow-sm'
-                            : 'text-[#78716c] hover:text-[#1c1917]'"
-                        @click="activeTab = 'history'"
-                    >
-                        <i class="pi pi-history"></i>
-                        Riwayat Penjualan
-                    </button>
-                </div>
+                <button
+                    type="button"
+                    class="min-h-[36px] px-4 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-colors"
+                    :class="activeTab === 'history' ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink'"
+                    @click="activeTab = 'history'"
+                >
+                    <i class="pi pi-history text-xs"></i>
+                    <span>Riwayat</span>
+                </button>
             </div>
         </div>
 
-        <!-- ============================================================== -->
-        <!-- MODE 1: KASIR POS (ADAPTIVE SPLIT PC / MOBILE)                -->
-        <!-- ============================================================== -->
+        <!-- MODE 1: KASIR POS -->
         <div v-show="activeTab === 'pos'" class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            <!-- Left Side: Product Catalog (7 Cols on Desktop) -->
+            <!-- Left: Product Catalog -->
             <div class="lg:col-span-7 xl:col-span-8 space-y-4">
-                <!-- Search & Barcode Scanner Header -->
-                <div class="bg-white border border-[#e7e5df] rounded-2xl p-4 sm:p-5 shadow-sm space-y-4">
-                    <!-- Barcode Search Input -->
-                    <div>
-                        <BarcodeScanner
-                            v-model="posSearch"
-                            @scanned="handleBarcodeScanned"
-                        />
-                    </div>
+                <div class="bg-surface border border-hairline rounded-2xl p-4 sm:p-5 space-y-3.5">
+                    <BarcodeScanner
+                        v-model="posSearch"
+                        placeholder="Pindai IMEI atau cari nama, brand, tipe..."
+                        @scanned="handleBarcodeScanned"
+                    />
 
-                    <!-- Category & Condition Filter Pills -->
-                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-[#e7e5df]">
-                        <!-- Category Pills -->
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-hairline">
                         <div class="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
                             <button
+                                v-for="cat in [
+                                    { id: 'all', label: `Semua (${categoryCounts.all})` },
+                                    { id: 'gadget', label: `Smartphone (${categoryCounts.gadget})` },
+                                    { id: 'aksesoris', label: `Aksesoris (${categoryCounts.aksesoris})` },
+                                    { id: 'sparepart', label: `Sparepart (${categoryCounts.sparepart})` },
+                                ]"
+                                :key="cat.id"
                                 type="button"
-                                class="px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all"
-                                :class="posCategory === 'all'
-                                    ? 'bg-[#1c1917] text-white'
-                                    : 'bg-[#f0ede6] text-[#78716c] hover:bg-[#e7e5df] hover:text-[#1c1917]'"
-                                @click="posCategory = 'all'"
+                                class="px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors tabular-nums"
+                                :class="posCategory === cat.id ? 'bg-ink text-surface' : 'bg-subtle text-muted hover:text-ink'"
+                                @click="posCategory = cat.id"
                             >
-                                Semua ({{ categoryCounts.all }})
-                            </button>
-                            <button
-                                type="button"
-                                class="px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all"
-                                :class="posCategory === 'gadget'
-                                    ? 'bg-[#1c1917] text-white'
-                                    : 'bg-[#f0ede6] text-[#78716c] hover:bg-[#e7e5df] hover:text-[#1c1917]'"
-                                @click="posCategory = 'gadget'"
-                            >
-                                Smartphone ({{ categoryCounts.gadget }})
-                            </button>
-                            <button
-                                type="button"
-                                class="px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all"
-                                :class="posCategory === 'aksesoris'
-                                    ? 'bg-[#1c1917] text-white'
-                                    : 'bg-[#f0ede6] text-[#78716c] hover:bg-[#e7e5df] hover:text-[#1c1917]'"
-                                @click="posCategory = 'aksesoris'"
-                            >
-                                Aksesoris ({{ categoryCounts.aksesoris }})
-                            </button>
-                            <button
-                                type="button"
-                                class="px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all"
-                                :class="posCategory === 'sparepart'
-                                    ? 'bg-[#1c1917] text-white'
-                                    : 'bg-[#f0ede6] text-[#78716c] hover:bg-[#e7e5df] hover:text-[#1c1917]'"
-                                @click="posCategory = 'sparepart'"
-                            >
-                                Sparepart ({{ categoryCounts.sparepart }})
+                                {{ cat.label }}
                             </button>
                         </div>
 
-                        <!-- Condition Filters (Baru vs Second) -->
-                        <div class="flex items-center gap-1 shrink-0 self-end sm:self-auto">
-                            <span class="text-[11px] uppercase font-bold text-[#78716c] mr-1">Kondisi:</span>
+                        <div class="inline-flex p-0.5 rounded-xl bg-subtle border border-hairline self-end sm:self-auto shrink-0">
                             <button
+                                v-for="cond in [
+                                    { id: 'all', label: 'Semua' },
+                                    { id: 'baru', label: 'Baru' },
+                                    { id: 'second', label: 'Second' },
+                                ]"
+                                :key="cond.id"
                                 type="button"
-                                class="px-2.5 py-1 rounded-lg text-xs font-semibold transition-all"
-                                :class="posCondition === 'all' ? 'bg-[#1c1917] text-white' : 'bg-[#f0ede6] text-[#78716c] hover:bg-[#e7e5df]'"
-                                @click="posCondition = 'all'"
-                            >Semua</button>
-                            <button
-                                type="button"
-                                class="px-2.5 py-1 rounded-lg text-xs font-semibold transition-all"
-                                :class="posCondition === 'baru' ? 'bg-stone-800 text-white dark:bg-stone-700' : 'bg-[#f0ede6] text-[#78716c] hover:bg-[#e7e5df]'"
-                                @click="posCondition = 'baru'"
-                            >Baru</button>
-                            <button
-                                type="button"
-                                class="px-2.5 py-1 rounded-lg text-xs font-semibold transition-all"
-                                :class="posCondition === 'second' ? 'bg-amber-700 text-white' : 'bg-[#f0ede6] text-[#78716c] hover:bg-[#e7e5df]'"
-                                @click="posCondition = 'second'"
-                            >Second</button>
+                                class="px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors"
+                                :class="posCondition === cond.id ? 'bg-surface text-ink shadow-sm' : 'text-muted hover:text-ink'"
+                                @click="posCondition = cond.id"
+                            >
+                                {{ cond.label }}
+                            </button>
                         </div>
                     </div>
                 </div>
 
-                <!-- Product Catalog Grid -->
-                <div v-if="filteredReadyStocks.length > 0" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                    <div
+                <!-- Product Grid -->
+                <div v-if="filteredReadyStocks.length > 0" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3.5">
+                    <button
                         v-for="item in filteredReadyStocks"
                         :key="item.id_stock"
-                        class="bg-white border rounded-2xl p-4 flex flex-col justify-between cursor-pointer select-none transition-all group"
-                        :class="isItemInCart(item.id_stock)
-                            ? 'border-[#1c1917] ring-1 ring-[#1c1917] bg-[#faf9f5]'
-                            : 'border-[#e7e5df] hover:border-[#1c1917] shadow-sm'"
+                        type="button"
+                        class="text-left bg-surface border rounded-2xl p-4 flex flex-col justify-between transition-colors group"
+                        :class="
+                            isItemInCart(item.id_stock)
+                                ? 'border-accent ring-1 ring-accent bg-accent-soft/40'
+                                : 'border-hairline hover:border-hairline-strong'
+                        "
                         @click="addToCart(item)"
                     >
-                        <div>
-                            <!-- Header: Brand & Condition Tag -->
-                            <div class="flex items-center justify-between gap-2 mb-2">
-                                <span class="text-xs font-bold uppercase tracking-wider text-amber-800">
+                        <div class="w-full">
+                            <div class="flex items-center justify-between gap-2 mb-1.5">
+                                <span class="text-[11px] font-bold uppercase tracking-wider text-accent-ink">
                                     {{ item.brand }}
                                 </span>
-                                <span
-                                    class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border"
-                                    :class="item.kondisi === 'second'
-                                        ? 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800/40'
-                                        : 'bg-stone-100 text-stone-800 border-stone-300 dark:bg-stone-800 dark:text-stone-200 dark:border-stone-700'"
-                                >
-                                    {{ item.kondisi || 'Baru' }}
+                                <span class="text-[10px] font-semibold uppercase px-2 py-0.5 rounded bg-subtle text-muted border border-hairline">
+                                    {{ item.kondisi || "Baru" }}
                                 </span>
                             </div>
 
-                            <!-- Product Name -->
-                            <h3 class="font-bold text-[#1c1917] text-sm leading-snug group-hover:text-amber-800 transition-colors">
+                            <h3 class="font-bold text-ink text-sm leading-snug">
                                 {{ item.nama }}
                             </h3>
 
-                            <!-- Specs Chips (RAM/Storage/Color) -->
                             <div class="flex flex-wrap gap-1.5 mt-2">
-                                <span v-if="item.storage || item.ram" class="text-[11px] font-medium px-2 py-0.5 rounded-md bg-[#f6f5f0] text-[#44403c] border border-[#e7e5df]">
-                                    {{ [item.ram, item.storage].filter(Boolean).join(' / ') }}
+                                <span v-if="item.storage || item.ram" class="text-[11px] font-mono px-2 py-0.5 rounded bg-canvas text-muted border border-hairline">
+                                    {{ [item.ram, item.storage].filter(Boolean).join(" / ") }}
                                 </span>
-                                <span v-if="item.warna && item.warna !== '-'" class="text-[11px] font-medium px-2 py-0.5 rounded-md bg-[#f6f5f0] text-[#78716c] border border-[#e7e5df]">
+                                <span v-if="item.warna && item.warna !== '-'" class="text-[11px] px-2 py-0.5 rounded bg-canvas text-muted border border-hairline">
                                     {{ item.warna }}
-                                </span>
-                                <span v-if="item.garansi" class="text-[11px] font-medium px-2 py-0.5 rounded-md bg-stone-100 text-[#44403c] border border-[#e7e5df]">
-                                    {{ item.garansi }}
                                 </span>
                             </div>
 
-                            <!-- IMEI / S/N -->
-                            <div v-if="item.imei" class="mt-2 text-[11px] font-mono text-[#78716c] flex items-center gap-1">
+                            <div v-if="item.imei" class="mt-2 text-[11px] font-mono tabular-nums text-tertiary flex items-center gap-1">
                                 <i class="pi pi-qrcode text-[10px]"></i>
                                 <span>{{ item.imei }}</span>
                             </div>
                         </div>
 
-                        <!-- Footer: Price & Add Action -->
-                        <div class="mt-4 pt-3 border-t border-[#e7e5df] flex items-center justify-between">
+                        <div class="w-full mt-4 pt-3 border-t border-hairline flex items-center justify-between">
                             <div>
-                                <span class="text-[10px] text-[#78716c] block">Harga Jual</span>
-                                <span class="text-sm font-bold text-[#1c1917] font-mono">
+                                <span class="text-[11px] text-tertiary block">Harga</span>
+                                <span class="text-sm font-bold text-ink font-mono tabular-nums">
                                     {{ formatCurrency(item.harga_jual) }}
                                 </span>
                             </div>
 
-                            <button
-                                type="button"
-                                class="w-8 h-8 rounded-xl flex items-center justify-center transition-all"
-                                :class="isItemInCart(item.id_stock)
-                                    ? 'bg-[#1c1917] text-white shadow-sm'
-                                    : 'bg-[#f0ede6] text-[#44403c] group-hover:bg-[#1c1917] group-hover:text-white'"
+                            <span
+                                class="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+                                :class="
+                                    isItemInCart(item.id_stock)
+                                        ? 'bg-accent text-white'
+                                        : 'bg-subtle text-ink group-hover:bg-ink group-hover:text-surface'
+                                "
                             >
                                 <i :class="isItemInCart(item.id_stock) ? 'pi pi-check text-xs' : 'pi pi-plus text-xs'"></i>
-                            </button>
+                            </span>
                         </div>
-                    </div>
+                    </button>
                 </div>
 
                 <!-- Empty State -->
-                <div v-else class="bg-white border border-[#e7e5df] rounded-2xl p-12 text-center shadow-sm">
-                    <div class="w-14 h-14 rounded-full bg-[#f6f5f0] mx-auto flex items-center justify-center text-[#78716c] mb-3">
-                        <i class="pi pi-search text-xl"></i>
-                    </div>
-                    <h3 class="font-bold text-[#1c1917] text-base">Tidak Ada Barang Ready</h3>
-                    <p class="text-xs text-[#78716c] mt-1">Coba ganti kata kunci pencarian atau ubah filter kategori/kondisi.</p>
+                <div v-else class="bg-surface border border-hairline rounded-2xl p-12 text-center space-y-2">
+                    <i class="pi pi-search text-2xl text-tertiary block"></i>
+                    <h3 class="font-bold text-ink text-sm">Tidak Ada Barang Ready</h3>
+                    <p class="text-xs text-muted">Ubah kata kunci pencarian atau filter kategori untuk melihat unit lain.</p>
                 </div>
             </div>
 
-            <!-- Right Side: Sticky Shopping Cart (Desktop lg:col-span-5) -->
-            <div class="hidden lg:block lg:col-span-5 xl:col-span-4 sticky top-6">
-                <div class="bg-white border border-[#e7e5df] rounded-2xl p-5 shadow-sm space-y-4">
-                    <!-- Cart Header -->
-                    <div class="flex items-center justify-between pb-3 border-b border-[#e7e5df]">
+            <!-- Right: Sticky Shopping Cart (Desktop) -->
+            <div class="hidden lg:block lg:col-span-5 xl:col-span-4 sticky top-20">
+                <div class="bg-surface border border-hairline rounded-2xl p-5 space-y-4">
+                    <div class="flex items-center justify-between pb-3 border-b border-hairline">
                         <div class="flex items-center gap-2">
-                            <i class="pi pi-shopping-cart text-[#1c1917] font-bold"></i>
-                            <h2 class="font-bold text-base text-[#1c1917] tracking-tight">
-                                Keranjang Belanja
-                            </h2>
-                            <span class="px-2 py-0.5 rounded-full text-xs font-bold bg-[#1c1917] text-white">
+                            <h2 class="font-bold text-sm text-ink">Keranjang</h2>
+                            <span class="px-2 py-0.5 rounded-full text-xs font-bold tabular-nums bg-subtle text-ink border border-hairline">
                                 {{ cart.length }}
                             </span>
                         </div>
                         <button
                             v-if="cart.length > 0"
                             type="button"
-                            class="text-xs font-medium text-rose-600 hover:text-rose-700 transition-colors"
+                            class="text-xs font-semibold text-rose-600 dark:text-rose-400 hover:underline"
                             @click="clearCart"
                         >
                             Kosongkan
                         </button>
                     </div>
 
-                    <!-- Customer Detail Form (Collapsible) -->
-                    <div class="bg-[#faf9f5] p-3 rounded-xl border border-[#e7e5df] space-y-2">
-                        <div class="flex items-center justify-between text-xs font-semibold text-[#78716c]">
-                            <span>Informasi Pelanggan (Opsional)</span>
-                            <i class="pi pi-user text-xs"></i>
-                        </div>
-                        <div class="grid grid-cols-2 gap-2">
-                            <input
-                                v-model="buyerName"
-                                type="text"
-                                placeholder="Nama Pembeli"
-                                class="w-full text-xs px-3 py-2 rounded-lg bg-white border border-[#e7e5df] text-[#1c1917] focus:outline-none focus:border-[#1c1917]"
-                            />
-                            <input
-                                v-model="buyerPhone"
-                                type="text"
-                                placeholder="No. WhatsApp"
-                                class="w-full text-xs px-3 py-2 rounded-lg bg-white border border-[#e7e5df] text-[#1c1917] focus:outline-none focus:border-[#1c1917]"
-                            />
-                        </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <input
+                            v-model="buyerName"
+                            type="text"
+                            placeholder="Nama pembeli (opsional)"
+                            class="w-full min-h-[38px] text-xs px-3 py-2 rounded-xl bg-canvas border border-hairline text-ink placeholder:text-tertiary focus:outline-none focus:border-accent"
+                        />
+                        <input
+                            v-model="buyerPhone"
+                            type="text"
+                            placeholder="No. HP / WA (opsional)"
+                            class="w-full min-h-[38px] text-xs px-3 py-2 rounded-xl bg-canvas border border-hairline text-ink placeholder:text-tertiary focus:outline-none focus:border-accent"
+                        />
                     </div>
 
-                    <!-- Cart Items Scrollable List -->
-                    <div class="max-h-[260px] overflow-y-auto space-y-2 pr-1">
-                        <div v-if="cart.length === 0" class="py-8 text-center text-[#78716c]">
-                            <i class="pi pi-inbox text-2xl mb-1.5 block opacity-50"></i>
-                            <p class="text-xs font-medium">Keranjang masih kosong.</p>
-                            <p class="text-[11px] opacity-70">Pilih barang di etalase untuk menambahkan.</p>
+                    <!-- Cart Items -->
+                    <div class="max-h-[240px] overflow-y-auto studio-scrollbar space-y-2 pr-1">
+                        <div v-if="cart.length === 0" class="py-8 text-center text-muted">
+                            <p class="text-xs font-medium">Keranjang masih kosong</p>
+                            <p class="text-[11px] text-tertiary mt-0.5">Pilih unit di sebelah kiri atau pindai IMEI.</p>
                         </div>
 
                         <div
                             v-for="(c, idx) in cart"
                             :key="c.id_stock"
-                            class="p-2.5 rounded-xl bg-[#faf9f5] border border-[#e7e5df] flex items-start justify-between gap-3 group"
+                            class="p-3 rounded-xl bg-canvas border border-hairline flex items-start justify-between gap-3"
                         >
-                            <div class="flex-1 min-w-0">
-                                <div class="flex items-center gap-1.5">
-                                    <span class="text-[10px] font-bold uppercase text-amber-800">{{ c.brand }}</span>
-                                    <span class="text-[9px] font-medium px-1.5 py-0.2 rounded bg-[#f0ede6] text-[#78716c]">
-                                        {{ c.kondisi || 'Baru' }}
-                                    </span>
-                                </div>
-                                <h4 class="text-xs font-semibold text-[#1c1917] truncate mt-0.5">
-                                    {{ c.nama }}
-                                </h4>
-                                <span class="text-xs font-bold text-[#1c1917] font-mono block mt-0.5">
+                            <div class="min-w-0 flex-1">
+                                <span class="text-[10px] font-bold uppercase text-accent-ink block">{{ c.brand }}</span>
+                                <h4 class="text-xs font-semibold text-ink truncate">{{ c.nama }}</h4>
+                                <span class="text-xs font-bold text-ink font-mono tabular-nums block mt-0.5">
                                     {{ formatCurrency(c.harga_jual) }}
                                 </span>
                             </div>
-
                             <button
                                 type="button"
-                                class="w-6 h-6 rounded-lg text-[#78716c] hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center transition-colors"
+                                class="w-7 h-7 rounded-lg text-tertiary hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-500/10 flex items-center justify-center transition-colors shrink-0"
+                                aria-label="Hapus dari keranjang"
                                 @click="removeFromCart(idx)"
                             >
                                 <i class="pi pi-trash text-xs"></i>
@@ -586,45 +533,47 @@ onMounted(() => {
                         </div>
                     </div>
 
-                    <!-- Payment Calculations -->
-                    <div class="space-y-2.5 pt-3 border-t border-[#e7e5df] text-xs">
-                        <!-- Subtotal -->
-                        <div class="flex justify-between text-[#78716c]">
+                    <!-- Totals & Payment -->
+                    <div class="space-y-3 pt-3 border-t border-hairline text-xs">
+                        <div class="flex justify-between text-muted">
                             <span>Subtotal</span>
-                            <span class="font-semibold text-[#1c1917] font-mono">{{ formatCurrency(cartSubtotal) }}</span>
+                            <span class="font-semibold text-ink font-mono tabular-nums">{{ formatCurrency(cartSubtotal) }}</span>
                         </div>
 
-                        <!-- Diskon -->
                         <div class="flex items-center justify-between gap-2">
-                            <span class="text-[#78716c]">Diskon (Rp)</span>
+                            <label for="pos-discount" class="text-muted">Diskon (Rp)</label>
                             <input
+                                id="pos-discount"
                                 v-model.number="discount"
                                 type="number"
                                 min="0"
-                                class="w-28 text-right text-xs px-2.5 py-1.5 rounded-lg bg-white border border-[#e7e5df] font-mono font-semibold text-rose-600 focus:outline-none focus:border-[#1c1917]"
+                                class="w-32 min-h-[36px] text-right text-xs px-2.5 py-1.5 rounded-lg bg-canvas border border-hairline font-mono tabular-nums font-semibold text-ink focus:outline-none focus:border-accent"
                             />
                         </div>
+                        <p v-if="isDiscountExcessive" class="text-[11px] text-rose-600 dark:text-rose-400 text-right">
+                            Diskon melebihi subtotal.
+                        </p>
 
-                        <!-- Total Bayar -->
-                        <div class="p-3 rounded-xl bg-[#f6f5f0] border border-[#e7e5df] flex justify-between items-center">
-                            <span class="font-bold text-[#1c1917] uppercase text-[11px] tracking-wider">Total Akhir</span>
-                            <span class="font-bold text-lg text-[#1c1917] font-mono">
+                        <div class="p-3 rounded-xl bg-canvas border border-hairline flex justify-between items-center">
+                            <span class="font-bold text-ink uppercase text-[11px] tracking-wider">Total Akhir</span>
+                            <span class="font-bold text-lg text-ink font-mono tabular-nums">
                                 {{ formatCurrency(cartTotal) }}
                             </span>
                         </div>
 
-                        <!-- Metode Bayar Selector -->
-                        <div class="space-y-1.5 pt-1">
-                            <label class="block text-[11px] font-bold text-[#78716c]">Metode Pembayaran</label>
+                        <div>
+                            <span class="block text-[11px] font-semibold text-muted mb-1.5">Metode Pembayaran</span>
                             <div class="grid grid-cols-3 gap-1.5">
                                 <button
                                     v-for="m in ['Cash', 'Transfer', 'QRIS']"
                                     :key="m"
                                     type="button"
-                                    class="py-1.5 rounded-lg text-xs font-semibold transition-all border"
-                                    :class="paymentMethod === m
-                                        ? 'bg-[#1c1917] text-white border-[#1c1917] shadow-sm'
-                                        : 'bg-[#faf9f5] border-[#e7e5df] text-[#78716c] hover:bg-[#f0ede6]'"
+                                    class="min-h-[36px] rounded-lg text-xs font-semibold transition-colors border"
+                                    :class="
+                                        paymentMethod === m
+                                            ? 'bg-ink text-surface border-ink'
+                                            : 'bg-canvas border-hairline text-muted hover:text-ink'
+                                    "
                                     @click="paymentMethod = m"
                                 >
                                     {{ m }}
@@ -632,13 +581,12 @@ onMounted(() => {
                             </div>
                         </div>
 
-                        <!-- Cash Quick Input -->
-                        <div v-if="paymentMethod === 'Cash'" class="space-y-2 pt-2 bg-[#faf9f5] p-3 rounded-xl border border-[#e7e5df]">
+                        <div v-if="paymentMethod === 'Cash'" class="space-y-2 bg-canvas p-3 rounded-xl border border-hairline">
                             <div class="flex justify-between items-center">
-                                <span class="font-semibold text-[11px] text-[#78716c]">Uang Diterima</span>
+                                <label for="pos-cash" class="font-semibold text-[11px] text-muted">Uang Diterima</label>
                                 <button
                                     type="button"
-                                    class="text-[11px] font-semibold text-[#1c1917] hover:underline"
+                                    class="text-[11px] font-semibold text-accent-ink hover:underline"
                                     @click="setExactMoney"
                                 >
                                     Uang Pas
@@ -646,117 +594,103 @@ onMounted(() => {
                             </div>
 
                             <input
+                                id="pos-cash"
                                 v-model.number="cashReceived"
                                 type="number"
-                                class="w-full text-base font-bold font-mono px-3 py-1.5 rounded-lg bg-white border border-[#e7e5df] text-[#1c1917] focus:outline-none focus:border-[#1c1917]"
+                                min="0"
                                 placeholder="0"
+                                class="w-full min-h-[40px] text-sm font-bold font-mono tabular-nums px-3 py-1.5 rounded-lg bg-surface border border-hairline text-ink focus:outline-none focus:border-accent"
                             />
 
-                            <!-- Quick Nominal Pills -->
-                            <div class="grid grid-cols-4 gap-1 pt-1">
+                            <div class="grid grid-cols-2 gap-1.5">
                                 <button
-                                    v-for="amt in [50000, 100000, 200000, 500000]"
+                                    v-for="amt in quickCashOptions"
                                     :key="amt"
                                     type="button"
-                                    class="py-1 rounded-md text-[10px] font-semibold bg-white border border-[#e7e5df] text-[#78716c] hover:bg-[#f0ede6]"
+                                    class="py-1.5 px-2 rounded-lg text-[11px] font-mono tabular-nums font-semibold bg-surface border border-hairline text-muted hover:text-ink transition-colors"
                                     @click="setQuickMoney(amt)"
                                 >
-                                    {{ amt >= 1000 ? (amt / 1000) + 'k' : amt }}
+                                    {{ formatCurrency(amt) }}
                                 </button>
                             </div>
 
-                            <!-- Kembalian Highlight -->
-                            <div class="flex justify-between items-center pt-2 border-t border-[#e7e5df]">
-                                <span class="text-xs font-semibold text-[#78716c]">Kembalian</span>
-                                <span class="font-bold text-sm font-mono" :class="isUnderpaid ? 'text-rose-600' : 'text-amber-800 dark:text-amber-400'">
-                                    {{ isUnderpaid ? 'Kurang ' + formatCurrency(cartTotal - (cashReceived || 0)) : formatCurrency(changeDue) }}
+                            <div class="flex justify-between items-center pt-2 border-t border-hairline">
+                                <span class="text-xs font-semibold text-muted">Kembalian</span>
+                                <span
+                                    class="font-bold text-sm font-mono tabular-nums"
+                                    :class="isUnderpaid ? 'text-rose-600 dark:text-rose-400' : 'text-accent-ink'"
+                                >
+                                    {{ isUnderpaid ? "Kurang " + formatCurrency(cartTotal - (cashReceived || 0)) : formatCurrency(changeDue) }}
                                 </span>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Checkout Button -->
                     <button
                         type="button"
-                        class="w-full py-3.5 rounded-xl font-bold text-xs uppercase tracking-wider text-white transition-all flex items-center justify-center gap-2 shadow-sm"
-                        :class="cart.length === 0 || (paymentMethod === 'Cash' && isUnderpaid)
-                            ? 'bg-stone-300 text-stone-500 cursor-not-allowed opacity-60'
-                            : 'bg-[#1c1917] hover:bg-[#292524] text-white cursor-pointer'"
-                        :disabled="cart.length === 0 || (paymentMethod === 'Cash' && isUnderpaid) || isSubmitting"
+                        class="w-full min-h-[44px] py-3 rounded-xl font-bold text-xs uppercase tracking-wider bg-ink text-surface hover:opacity-90 transition-opacity flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                        :disabled="cart.length === 0 || isDiscountExcessive || (paymentMethod === 'Cash' && isUnderpaid) || isSubmitting"
                         @click="processCheckout"
                     >
-                        <i v-if="isSubmitting" class="pi pi-spin pi-spinner"></i>
-                        <i v-else class="pi pi-check-circle"></i>
-                        {{ isSubmitting ? 'Memproses Transaksi...' : 'Bayar & Cetak Struk' }}
+                        <i v-if="isSubmitting" class="pi pi-spin pi-spinner text-xs"></i>
+                        <span>{{ isSubmitting ? "Memproses..." : "Bayar & Cetak Struk" }}</span>
                     </button>
                 </div>
             </div>
         </div>
 
-        <!-- ============================================================== -->
-        <!-- MOBILE FLOATING CART BAR & BOTTOM SHEET                         -->
-        <!-- ============================================================== -->
-        <div class="lg:hidden fixed bottom-4 left-4 right-4 z-40">
-            <div
-                class="bg-white/95 backdrop-blur-md p-3.5 rounded-2xl border border-[#e7e5df] shadow-xl flex items-center justify-between gap-3 cursor-pointer"
+        <!-- Mobile Floating Cart Bar -->
+        <div v-show="activeTab === 'pos'" class="lg:hidden fixed bottom-4 left-4 right-4 z-30">
+            <button
+                type="button"
+                class="w-full bg-surface border border-hairline shadow-lg p-3.5 rounded-2xl flex items-center justify-between gap-3"
                 @click="mobileCartDrawer = true"
             >
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-xl bg-[#1c1917] text-white flex items-center justify-center font-bold shadow-sm">
-                        <i class="pi pi-shopping-cart text-amber-400"></i>
+                <div class="flex items-center gap-3 text-left">
+                    <div class="w-10 h-10 rounded-xl bg-ink text-surface flex items-center justify-center">
+                        <i class="pi pi-shopping-bag text-sm text-accent"></i>
                     </div>
                     <div>
-                        <span class="text-[11px] font-medium text-[#78716c] block uppercase">
+                        <span class="text-[11px] font-medium text-muted block tabular-nums">
                             {{ cart.length }} Item di Keranjang
                         </span>
-                        <span class="text-base font-bold text-[#1c1917] font-mono">
+                        <span class="text-base font-bold text-ink font-mono tabular-nums">
                             {{ formatCurrency(cartTotal) }}
                         </span>
                     </div>
                 </div>
-
-                <button
-                    type="button"
-                    class="px-4 py-2 rounded-xl bg-[#1c1917] text-white font-semibold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-sm"
-                >
-                    <span>Bayar</span>
-                    <i class="pi pi-arrow-right text-xs"></i>
-                </button>
-            </div>
+                <span class="px-4 py-2 rounded-xl bg-ink text-surface font-semibold text-xs">
+                    Checkout
+                </span>
+            </button>
         </div>
 
-        <!-- Mobile Bottom Sheet Dialog -->
+        <!-- Mobile Bottom Sheet Dialog (Full Feature Parity) -->
         <Dialog
             v-model:visible="mobileCartDrawer"
             position="bottom"
             modal
-            :closable="true"
-            :style="{ width: '100vw', maxWidth: '600px', margin: 0, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }"
-            class="rounded-t-3xl bg-white"
+            header="Rincian Pembayaran POS"
+            :style="{ width: '100vw', maxWidth: '600px', margin: 0 }"
         >
-            <template #header>
-                <div class="w-full text-center">
-                    <div class="w-10 h-1 bg-[#e7e5df] rounded-full mx-auto mb-2"></div>
-                    <h3 class="font-bold text-base text-[#1c1917]">Rincian Pembayaran POS</h3>
-                </div>
-            </template>
-
-            <!-- Bottom Sheet Content -->
-            <div class="space-y-4 pb-4">
-                <!-- Cart Items -->
-                <div class="max-h-[220px] overflow-y-auto space-y-2 pr-1">
+            <div class="space-y-4 pb-2 text-xs">
+                <div class="max-h-[200px] overflow-y-auto space-y-2 pr-1">
+                    <div v-if="cart.length === 0" class="py-6 text-center text-muted">
+                        Keranjang masih kosong.
+                    </div>
                     <div
                         v-for="(c, idx) in cart"
                         :key="c.id_stock"
-                        class="p-2.5 rounded-xl bg-[#faf9f5] border border-[#e7e5df] flex justify-between items-center"
+                        class="p-2.5 rounded-xl bg-canvas border border-hairline flex justify-between items-center gap-2"
                     >
-                        <div>
-                            <h4 class="text-xs font-semibold text-[#1c1917]">{{ c.nama }}</h4>
-                            <span class="text-xs font-bold text-[#1c1917] font-mono">{{ formatCurrency(c.harga_jual) }}</span>
+                        <div class="min-w-0">
+                            <h4 class="text-xs font-semibold text-ink truncate">{{ c.nama }}</h4>
+                            <span class="text-xs font-bold text-ink font-mono tabular-nums">{{ formatCurrency(c.harga_jual) }}</span>
                         </div>
                         <button
                             type="button"
-                            class="w-6 h-6 rounded-lg text-[#78716c] hover:text-rose-600 flex items-center justify-center"
+                            class="w-8 h-8 rounded-lg text-tertiary hover:text-rose-600 flex items-center justify-center shrink-0"
+                            aria-label="Hapus item"
                             @click="removeFromCart(idx)"
                         >
                             <i class="pi pi-trash text-xs"></i>
@@ -764,26 +698,34 @@ onMounted(() => {
                     </div>
                 </div>
 
-                <!-- Customer Details -->
                 <div class="grid grid-cols-2 gap-2">
                     <input
                         v-model="buyerName"
                         type="text"
-                        placeholder="Nama Pembeli"
-                        class="w-full text-xs p-2.5 rounded-xl bg-white border border-[#e7e5df] text-[#1c1917]"
+                        placeholder="Nama pembeli"
+                        class="w-full min-h-[42px] text-sm px-3 py-2 rounded-xl bg-canvas border border-hairline text-ink"
                     />
                     <input
                         v-model="buyerPhone"
                         type="text"
-                        placeholder="No. WhatsApp"
-                        class="w-full text-xs p-2.5 rounded-xl bg-white border border-[#e7e5df] text-[#1c1917]"
+                        placeholder="No. HP / WA"
+                        class="w-full min-h-[42px] text-sm px-3 py-2 rounded-xl bg-canvas border border-hairline text-ink"
                     />
                 </div>
 
-                <!-- Total & Payment Method -->
-                <div class="p-3 rounded-xl bg-[#f6f5f0] border border-[#e7e5df] flex justify-between items-center">
-                    <span class="text-xs font-semibold text-[#78716c]">Total Belanja</span>
-                    <span class="text-lg font-bold text-[#1c1917] font-mono">{{ formatCurrency(cartTotal) }}</span>
+                <div class="flex items-center justify-between gap-2">
+                    <span class="text-muted font-medium">Diskon (Rp)</span>
+                    <input
+                        v-model.number="discount"
+                        type="number"
+                        min="0"
+                        class="w-36 min-h-[40px] text-right text-sm px-3 py-1.5 rounded-xl bg-canvas border border-hairline font-mono tabular-nums font-semibold text-ink"
+                    />
+                </div>
+
+                <div class="p-3 rounded-xl bg-canvas border border-hairline flex justify-between items-center">
+                    <span class="font-semibold text-muted">Total Akhir</span>
+                    <span class="text-lg font-bold text-ink font-mono tabular-nums">{{ formatCurrency(cartTotal) }}</span>
                 </div>
 
                 <div class="grid grid-cols-3 gap-1.5">
@@ -791,71 +733,74 @@ onMounted(() => {
                         v-for="m in ['Cash', 'Transfer', 'QRIS']"
                         :key="m"
                         type="button"
-                        class="py-2 rounded-xl text-xs font-semibold transition-all border"
-                        :class="paymentMethod === m ? 'bg-[#1c1917] text-white border-[#1c1917]' : 'bg-[#faf9f5] border-[#e7e5df] text-[#78716c]'"
+                        class="min-h-[40px] rounded-xl text-xs font-semibold border transition-colors"
+                        :class="paymentMethod === m ? 'bg-ink text-surface border-ink' : 'bg-canvas border-hairline text-muted'"
                         @click="paymentMethod = m"
                     >
                         {{ m }}
                     </button>
                 </div>
 
-                <!-- Cash input on mobile -->
                 <div v-if="paymentMethod === 'Cash'" class="space-y-2">
-                    <div class="flex justify-between items-center text-xs">
-                        <span class="text-[#78716c]">Uang Diterima</span>
-                        <button type="button" class="text-[#1c1917] font-semibold" @click="setExactMoney">Uang Pas</button>
+                    <div class="flex justify-between items-center">
+                        <span class="text-muted">Uang Diterima</span>
+                        <button type="button" class="text-accent-ink font-semibold" @click="setExactMoney">Uang Pas</button>
                     </div>
                     <input
                         v-model.number="cashReceived"
                         type="number"
+                        min="0"
                         placeholder="Nominal uang tunai"
-                        class="w-full text-base font-bold font-mono p-2.5 rounded-xl bg-white border border-[#e7e5df] text-[#1c1917]"
+                        class="w-full min-h-[44px] text-base font-bold font-mono tabular-nums px-3 py-2 rounded-xl bg-canvas border border-hairline text-ink"
                     />
-                    <div class="flex justify-between items-center text-xs pt-1">
-                        <span class="text-[#78716c]">Kembalian</span>
-                        <span class="font-bold font-mono" :class="isUnderpaid ? 'text-rose-600' : 'text-amber-800 dark:text-amber-400'">
-                            {{ isUnderpaid ? 'Kurang ' + formatCurrency(cartTotal - (cashReceived || 0)) : formatCurrency(changeDue) }}
+                    <div class="grid grid-cols-2 gap-1.5">
+                        <button
+                            v-for="amt in quickCashOptions"
+                            :key="amt"
+                            type="button"
+                            class="min-h-[36px] rounded-lg text-xs font-mono tabular-nums font-semibold bg-canvas border border-hairline text-muted"
+                            @click="setQuickMoney(amt)"
+                        >
+                            {{ formatCurrency(amt) }}
+                        </button>
+                    </div>
+                    <div class="flex justify-between items-center pt-1">
+                        <span class="text-muted">Kembalian</span>
+                        <span class="font-bold font-mono tabular-nums" :class="isUnderpaid ? 'text-rose-600' : 'text-accent-ink'">
+                            {{ isUnderpaid ? "Kurang " + formatCurrency(cartTotal - (cashReceived || 0)) : formatCurrency(changeDue) }}
                         </span>
                     </div>
                 </div>
 
-                <!-- Action Button -->
                 <button
                     type="button"
-                    class="w-full py-3.5 rounded-xl font-bold text-xs uppercase tracking-wider text-white bg-[#1c1917] shadow-sm"
-                    :disabled="cart.length === 0 || (paymentMethod === 'Cash' && isUnderpaid) || isSubmitting"
+                    class="w-full min-h-[44px] rounded-xl font-bold text-xs uppercase tracking-wider bg-ink text-surface disabled:opacity-40"
+                    :disabled="cart.length === 0 || isDiscountExcessive || (paymentMethod === 'Cash' && isUnderpaid) || isSubmitting"
                     @click="processCheckout"
                 >
-                    {{ isSubmitting ? 'Memproses...' : 'Selesaikan & Cetak Struk' }}
+                    {{ isSubmitting ? "Memproses..." : "Selesaikan & Cetak Struk" }}
                 </button>
             </div>
         </Dialog>
 
-        <!-- ============================================================== -->
-        <!-- MODE 2: RIWAYAT TRANSAKSI PENJUALAN                            -->
-        <!-- ============================================================== -->
-        <div v-show="activeTab === 'history'" class="bg-white border border-[#e7e5df] rounded-2xl p-5 shadow-sm space-y-4">
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-[#e7e5df]">
+        <!-- MODE 2: RIWAYAT TRANSAKSI -->
+        <div v-show="activeTab === 'history'" class="bg-surface border border-hairline rounded-2xl p-5 space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                    <h2 class="text-lg font-bold text-[#1c1917] tracking-tight">
-                        Riwayat Transaksi Penjualan
-                    </h2>
-                    <p class="text-xs text-[#78716c]">Daftar seluruh transaksi yang tercatat dalam sistem kasir</p>
+                    <h2 class="text-base font-bold text-ink">Riwayat Transaksi</h2>
+                    <p class="text-xs text-muted">Daftar transaksi yang tercatat pada sistem kasir</p>
                 </div>
-
-                <!-- Global Filter -->
-                <div class="relative">
-                    <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-[#78716c] text-xs"></i>
+                <div class="relative w-full sm:w-64">
+                    <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-tertiary text-xs pointer-events-none"></i>
                     <input
                         v-model="historyFilters['global'].value"
                         type="text"
                         placeholder="Cari faktur, pembeli, IMEI..."
-                        class="text-xs pl-8 pr-4 py-2 rounded-xl bg-[#faf9f5] border border-[#e7e5df] text-[#1c1917] focus:outline-none focus:border-[#1c1917] w-64"
+                        class="w-full min-h-[38px] text-xs pl-8 pr-3.5 py-2 rounded-xl bg-canvas border border-hairline text-ink placeholder:text-tertiary focus:outline-none focus:border-accent"
                     />
                 </div>
             </div>
 
-            <!-- Table -->
             <DataTable
                 :value="penjualan"
                 :paginator="true"
@@ -868,82 +813,78 @@ onMounted(() => {
                 class="p-datatable-sm"
             >
                 <template #empty>
-                    <div class="text-center py-8 text-[#78716c]">
+                    <div class="text-center py-8 text-xs text-muted">
                         Belum ada transaksi penjualan yang tercatat.
                     </div>
                 </template>
 
-                <!-- No Faktur -->
                 <Column field="no_invoice" header="Faktur" sortable style="min-width: 9rem">
                     <template #body="{ data }">
-                        <span class="font-mono text-xs font-semibold text-[#1c1917]">{{ data.no_invoice || '-' }}</span>
+                        <span class="font-mono text-xs font-semibold text-ink">{{ data.no_invoice || "-" }}</span>
                     </template>
                 </Column>
 
-                <!-- Tanggal -->
                 <Column field="tanggal" header="Tanggal" sortable style="min-width: 7.5rem">
                     <template #body="{ data }">
-                        <span class="text-xs text-[#44403c]">{{ new Date(data.tanggal).toLocaleDateString('id-ID') }}</span>
+                        <span class="text-xs text-muted">{{ formatDate(data.tanggal) }}</span>
                     </template>
                 </Column>
 
-                <!-- Kasir -->
                 <Column field="user.nama" header="Kasir" sortable style="min-width: 8rem">
                     <template #body="{ data }">
-                        <span class="text-xs font-medium text-[#44403c]">{{ data.user?.nama || 'Petugas' }}</span>
+                        <span class="text-xs text-muted">{{ data.user?.nama || "Petugas" }}</span>
                     </template>
                 </Column>
 
-                <!-- Produk Terjual -->
                 <Column header="Barang Terjual" style="min-width: 14rem">
                     <template #body="{ data }">
                         <div class="text-xs">
-                            <span class="font-semibold text-[#1c1917]">{{ data.stok_hp?.nama || 'Item' }}</span>
-                            <div v-if="data.stok_hp?.imei" class="text-[10px] font-mono text-[#78716c]">
+                            <span class="font-semibold text-ink">{{ data.stok_hp?.nama || "Item" }}</span>
+                            <div v-if="data.stok_hp?.imei" class="text-[11px] font-mono text-tertiary">
                                 IMEI: {{ data.stok_hp.imei }}
                             </div>
                         </div>
                     </template>
                 </Column>
 
-                <!-- Pembeli -->
                 <Column field="nama_pembeli" header="Pembeli" style="min-width: 9rem">
                     <template #body="{ data }">
                         <div class="text-xs">
-                            <span class="font-medium text-[#44403c]">{{ data.nama_pembeli || 'Umum' }}</span>
-                            <div v-if="data.no_hp_pembeli" class="text-[10px] text-[#78716c]">
-                                {{ data.no_hp_pembeli }}
-                            </div>
+                            <span class="font-medium text-ink">{{ data.nama_pembeli || "Umum" }}</span>
+                            <div v-if="data.no_hp_pembeli" class="text-[11px] text-tertiary">{{ data.no_hp_pembeli }}</div>
                         </div>
                     </template>
                 </Column>
 
-                <!-- Harga Jual -->
                 <Column field="harga_jual" header="Nominal" sortable style="min-width: 9rem">
                     <template #body="{ data }">
-                        <span class="font-bold text-[#1c1917] font-mono text-xs">
-                            {{ formatCurrency(data.harga_jual) }}
-                        </span>
+                        <div>
+                            <span class="font-bold text-ink font-mono tabular-nums text-xs block">
+                                {{ formatCurrency((Number(data.harga_jual) || 0) - (Number(data.diskon) || 0)) }}
+                            </span>
+                            <span v-if="data.diskon > 0" class="text-[10px] font-mono tabular-nums text-rose-600 dark:text-rose-400">
+                                Diskon -{{ formatCurrency(data.diskon) }}
+                            </span>
+                        </div>
                     </template>
                 </Column>
 
-                <!-- Metode Pembayaran -->
                 <Column field="met_pem" header="Metode" sortable style="min-width: 6.5rem">
                     <template #body="{ data }">
-                        <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-[#f0ede6] text-[#44403c] border border-[#e7e5df]">
+                        <span class="text-[11px] font-semibold uppercase px-2 py-0.5 rounded bg-subtle text-muted border border-hairline">
                             {{ data.met_pem }}
                         </span>
                     </template>
                 </Column>
 
-                <!-- Actions -->
                 <Column header="Aksi" style="min-width: 7rem" :exportable="false">
                     <template #body="{ data }">
                         <div class="flex items-center gap-1.5">
                             <button
                                 type="button"
-                                class="w-8 h-8 rounded-lg bg-[#f0ede6] text-[#44403c] hover:bg-[#1c1917] hover:text-white flex items-center justify-center transition-colors"
-                                v-tooltip.top="'Cetak Struk Thermal'"
+                                class="w-8 h-8 rounded-lg bg-subtle text-muted hover:text-ink hover:bg-hover flex items-center justify-center transition-colors"
+                                aria-label="Cetak struk thermal"
+                                v-tooltip.top="'Cetak Struk'"
                                 @click="printInvoice(data.no_invoice)"
                             >
                                 <i class="pi pi-print text-xs"></i>
@@ -952,8 +893,9 @@ onMounted(() => {
                             <button
                                 v-if="isOwner"
                                 type="button"
-                                class="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white flex items-center justify-center transition-colors"
-                                v-tooltip.top="'Hapus & Kembalikan Stok'"
+                                class="w-8 h-8 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-600 hover:text-white flex items-center justify-center transition-colors"
+                                aria-label="Batalkan transaksi"
+                                v-tooltip.top="'Batalkan & Kembalikan Stok'"
                                 @click="confirmDeleteSale(data)"
                             >
                                 <i class="pi pi-trash text-xs"></i>
@@ -964,31 +906,25 @@ onMounted(() => {
             </DataTable>
         </div>
 
-        <!-- ============================================================== -->
-        <!-- THERMAL RECEIPT MODAL                                          -->
-        <!-- ============================================================== -->
-        <ThermalReceipt
-            v-model:visible="receiptDialog"
-            :invoice="currentReceipt"
-        />
+        <!-- Thermal Receipt Modal (v-model matches modelValue prop) -->
+        <ThermalReceipt v-model="receiptDialog" :invoice="currentReceipt" />
 
         <!-- Confirm Delete Sale Dialog -->
         <Dialog
             v-model:visible="deleteDialog"
-            header="Hapus Transaksi Penjualan"
+            header="Batalkan Transaksi"
             modal
-            :style="{ width: '450px', maxWidth: '90vw' }"
-            class="rounded-2xl bg-white"
+            :style="{ width: '440px', maxWidth: '90vw' }"
         >
             <div class="flex items-start gap-3 pt-2">
-                <div class="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0 border border-rose-200">
+                <div class="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
                     <i class="pi pi-exclamation-triangle text-lg"></i>
                 </div>
                 <div>
-                    <p class="font-bold text-[#1c1917]">Batalkan transaksi ini?</p>
-                    <p class="text-xs text-[#78716c] mt-1 leading-relaxed">
-                        Faktur <b>{{ selectedSaleToDelete?.no_invoice }}</b> akan dihapus, dan unit barang 
-                        <b>{{ selectedSaleToDelete?.stok_hp?.nama }}</b> akan dikembalikan statusnya menjadi <b>Tersedia (Ready)</b> di etalase.
+                    <p class="font-bold text-sm text-ink">Batalkan transaksi ini?</p>
+                    <p class="text-xs text-muted mt-1 leading-relaxed">
+                        Faktur <b>{{ selectedSaleToDelete?.no_invoice }}</b> akan dihapus dan unit
+                        <b>{{ selectedSaleToDelete?.stok_hp?.nama }}</b> dikembalikan ke status Ready.
                     </p>
                 </div>
             </div>

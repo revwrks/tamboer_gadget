@@ -4,20 +4,51 @@ namespace App\Http\Controllers;
 
 use App\Models\MPenjualan;
 use App\Models\MStock;
-use App\Models\MUsers;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 
 class CPenjualan extends Controller
 {
-    public function index()
+    private function maskStockCost($sale, $user)
+    {
+        if ($sale && $sale->stokHp && $user?->level !== 'owner') {
+            $sale->stokHp->makeHidden('harga_masuk');
+        }
+        return $sale;
+    }
+
+    private function generateInvoiceNumber(string $tanggal): string
+    {
+        $dateStr = date('Ymd', strtotime($tanggal));
+        $prefix = "INV/{$dateStr}/";
+
+        $existing = MPenjualan::where('no_invoice', 'LIKE', $prefix . '%')
+            ->pluck('no_invoice');
+
+        $maxSeq = 0;
+        foreach ($existing as $inv) {
+            $suffix = substr($inv, strlen($prefix));
+            if (ctype_digit($suffix)) {
+                $maxSeq = max($maxSeq, (int) $suffix);
+            }
+        }
+
+        return sprintf('%s%04d', $prefix, $maxSeq + 1);
+    }
+
+    public function index(Request $request)
     {
         try {
+            $user = $request->user();
             $penjualan = MPenjualan::with(['stokHp', 'user'])
                 ->orderBy('tanggal', 'desc')
                 ->orderBy('id_penjualan', 'desc')
-                ->get();
+                ->get()
+                ->map(fn ($sale) => $this->maskStockCost($sale, $user));
+
             return response()->json($penjualan, 200);
         } catch (\Exception $e) {
             Log::error('Failed to fetch sales', ['error' => $e->getMessage()]);
@@ -26,7 +57,7 @@ class CPenjualan extends Controller
     }
 
     /**
-     * Single item sale (Backward compatibility)
+     * Single item sale
      */
     public function store(Request $request)
     {
@@ -36,7 +67,7 @@ class CPenjualan extends Controller
                 'id_stock' => 'required|exists:stok_hp,id_stock',
                 'id_sales' => 'nullable|exists:user,id_user',
                 'harga_jual' => 'required|numeric|min:0',
-                'met_pem' => 'required|string|max:50',
+                'met_pem' => 'required|in:Cash,Transfer,QRIS',
                 'diskon' => 'nullable|numeric|min:0',
                 'uang_bayar' => 'nullable|numeric|min:0',
                 'kembalian' => 'nullable|numeric',
@@ -45,32 +76,54 @@ class CPenjualan extends Controller
                 'catatan' => 'nullable|string',
             ]);
 
-            $sellerId = $validated['id_sales'] ?? $request->user()?->id_user;
+            $authUser = $request->user();
+            $sellerId = ($authUser?->level === 'owner' && !empty($validated['id_sales']))
+                ? $validated['id_sales']
+                : $authUser?->id_user;
+
             if (!$sellerId) {
                 return response()->json(['error' => 'Identitas penjual (sales) wajib ada'], 422);
             }
 
-            $penjualan = DB::transaction(function () use ($validated, $sellerId) {
+            $penjualan = DB::transaction(function () use ($validated, $sellerId, $authUser) {
                 $stock = MStock::lockForUpdate()->find($validated['id_stock']);
 
                 if (!$stock || $stock->status !== 'ada') {
                     throw new \DomainException('Unit barang ini sudah terjual atau statusnya tidak tersedia!');
                 }
 
-                $dateStr = date('Ymd', strtotime($validated['tanggal']));
-                $seq = MPenjualan::whereDate('tanggal', $validated['tanggal'])->distinct('no_invoice')->count('no_invoice') + 1;
-                $noInvoice = sprintf('INV/%s/%04d', $dateStr, $seq);
+                $subtotal = (float) $validated['harga_jual'];
+                $diskon = (float) ($validated['diskon'] ?? 0);
+                if ($diskon > $subtotal) {
+                    throw new \DomainException('Diskon tidak boleh melebihi subtotal transaksi!');
+                }
+
+                $grandTotal = $subtotal - $diskon;
+                $method = $validated['met_pem'];
+
+                if ($method === 'Cash') {
+                    $uangBayar = (float) ($validated['uang_bayar'] ?? 0);
+                    if ($uangBayar < $grandTotal) {
+                        throw new \DomainException('Nominal uang yang diterima kurang dari total akhir!');
+                    }
+                    $kembalian = $uangBayar - $grandTotal;
+                } else {
+                    $uangBayar = $grandTotal;
+                    $kembalian = 0.0;
+                }
+
+                $noInvoice = $this->generateInvoiceNumber($validated['tanggal']);
 
                 $sale = MPenjualan::create([
                     'no_invoice' => $noInvoice,
                     'tanggal' => $validated['tanggal'],
                     'id_stock' => $stock->id_stock,
                     'id_sales' => $sellerId,
-                    'harga_jual' => $validated['harga_jual'],
-                    'diskon' => $validated['diskon'] ?? 0,
-                    'met_pem' => $validated['met_pem'],
-                    'uang_bayar' => $validated['uang_bayar'] ?? 0,
-                    'kembalian' => $validated['kembalian'] ?? 0,
+                    'harga_jual' => $subtotal,
+                    'diskon' => $diskon,
+                    'met_pem' => $method,
+                    'uang_bayar' => $uangBayar,
+                    'kembalian' => $kembalian,
                     'nama_pembeli' => $validated['nama_pembeli'] ?? null,
                     'no_hp_pembeli' => $validated['no_hp_pembeli'] ?? null,
                     'catatan' => $validated['catatan'] ?? null,
@@ -79,21 +132,21 @@ class CPenjualan extends Controller
                 $stock->status = 'terjual';
                 $stock->save();
 
-                return $sale->load(['stokHp', 'user']);
+                $sale->load(['stokHp', 'user']);
+                return $this->maskStockCost($sale, $authUser);
             });
 
             return response()->json([
                 'success' => 'Penjualan berhasil disimpan',
-                'penjualan' => $penjualan
+                'penjualan' => $penjualan,
             ], 201);
-
         } catch (\DomainException $e) {
             return response()->json(['error' => $e->getMessage()], 422);
-        } catch (\Illuminate\Validation\ValidationException $e) {
+        } catch (ValidationException $e) {
             return response()->json(['error' => $e->errors()], 422);
         } catch (\Exception $e) {
             Log::error('Sales creation error', ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'Terjadi kesalahan sistem: ' . $e->getMessage()], 500);
+            return response()->json(['error' => 'Terjadi kesalahan sistem saat menyimpan penjualan'], 500);
         }
     }
 
@@ -109,7 +162,7 @@ class CPenjualan extends Controller
                 'items.*.id_stock' => 'required|exists:stok_hp,id_stock',
                 'items.*.harga_jual' => 'required|numeric|min:0',
                 'id_sales' => 'nullable|exists:user,id_user',
-                'met_pem' => 'required|string|max:50',
+                'met_pem' => 'required|in:Cash,Transfer,QRIS',
                 'diskon' => 'nullable|numeric|min:0',
                 'uang_bayar' => 'nullable|numeric|min:0',
                 'kembalian' => 'nullable|numeric',
@@ -118,52 +171,66 @@ class CPenjualan extends Controller
                 'catatan' => 'nullable|string',
             ]);
 
-            $sellerId = $validated['id_sales'] ?? $request->user()?->id_user;
+            $authUser = $request->user();
+            $sellerId = ($authUser?->level === 'owner' && !empty($validated['id_sales']))
+                ? $validated['id_sales']
+                : $authUser?->id_user;
+
             if (!$sellerId) {
                 return response()->json(['error' => 'Identitas penjual (sales) wajib ada'], 422);
             }
 
-            // Cegah duplikasi ID stok dalam 1 keranjang belanja
             $stockIds = array_column($validated['items'], 'id_stock');
             if (count($stockIds) !== count(array_unique($stockIds))) {
                 return response()->json(['error' => 'Ada item duplikat di keranjang belanja!'], 422);
             }
 
-            $invoiceResult = DB::transaction(function () use ($request, $validated, $sellerId, $stockIds) {
-                // Lock semua baris stok yang akan dibeli
+            $invoiceResult = DB::transaction(function () use ($validated, $sellerId, $stockIds, $authUser) {
                 $stocks = MStock::lockForUpdate()->whereIn('id_stock', $stockIds)->get()->keyBy('id_stock');
 
-                // Validasi status semua stok
+                $subtotal = 0.0;
                 foreach ($validated['items'] as $item) {
                     $stock = $stocks->get($item['id_stock']);
                     if (!$stock || $stock->status !== 'ada') {
                         $label = $stock ? ($stock->nama . ' [' . ($stock->imei ?: 'Tanpa IMEI') . ']') : 'ID ' . $item['id_stock'];
                         throw new \DomainException("Barang {$label} sudah terjual atau statusnya tidak tersedia!");
                     }
+                    $subtotal += (float) $item['harga_jual'];
                 }
 
-                // Generate 1 Nomor Faktur untuk seluruh item belanja
-                $dateStr = date('Ymd', strtotime($validated['tanggal']));
-                $seq = MPenjualan::whereDate('tanggal', $validated['tanggal'])->distinct('no_invoice')->count('no_invoice') + 1;
-                $noInvoice = sprintf('INV/%s/%04d', $dateStr, $seq);
-
-                $createdSales = [];
                 $diskonTotal = (float) ($validated['diskon'] ?? 0);
-                $uangBayar = (float) ($validated['uang_bayar'] ?? 0);
-                $kembalian = (float) ($validated['kembalian'] ?? 0);
+                if ($diskonTotal > $subtotal) {
+                    throw new \DomainException('Diskon tidak boleh melebihi subtotal belanja!');
+                }
+
+                $grandTotal = $subtotal - $diskonTotal;
+                $method = $validated['met_pem'];
+
+                if ($method === 'Cash') {
+                    $uangBayar = (float) ($validated['uang_bayar'] ?? 0);
+                    if ($uangBayar < $grandTotal) {
+                        throw new \DomainException('Nominal uang yang diterima kurang dari total belanja!');
+                    }
+                    $kembalian = $uangBayar - $grandTotal;
+                } else {
+                    $uangBayar = $grandTotal;
+                    $kembalian = 0.0;
+                }
+
+                $noInvoice = $this->generateInvoiceNumber($validated['tanggal']);
+                $createdSales = [];
 
                 foreach ($validated['items'] as $idx => $item) {
                     $stock = $stocks->get($item['id_stock']);
 
-                    // Catat diskon, uang bayar, kembalian di baris pertama transaksi
                     $sale = MPenjualan::create([
                         'no_invoice' => $noInvoice,
                         'tanggal' => $validated['tanggal'],
                         'id_stock' => $stock->id_stock,
                         'id_sales' => $sellerId,
-                        'harga_jual' => $item['harga_jual'],
+                        'harga_jual' => (float) $item['harga_jual'],
                         'diskon' => $idx === 0 ? $diskonTotal : 0,
-                        'met_pem' => $validated['met_pem'],
+                        'met_pem' => $method,
                         'uang_bayar' => $idx === 0 ? $uangBayar : 0,
                         'kembalian' => $idx === 0 ? $kembalian : 0,
                         'nama_pembeli' => $validated['nama_pembeli'] ?? null,
@@ -174,7 +241,8 @@ class CPenjualan extends Controller
                     $stock->status = 'terjual';
                     $stock->save();
 
-                    $createdSales[] = $sale->load(['stokHp', 'user']);
+                    $sale->load(['stokHp', 'user']);
+                    $createdSales[] = $this->maskStockCost($sale, $authUser);
                 }
 
                 return [
@@ -182,12 +250,14 @@ class CPenjualan extends Controller
                     'tanggal' => $validated['tanggal'],
                     'nama_pembeli' => $validated['nama_pembeli'] ?? null,
                     'no_hp_pembeli' => $validated['no_hp_pembeli'] ?? null,
-                    'met_pem' => $validated['met_pem'],
+                    'met_pem' => $method,
+                    'subtotal' => $subtotal,
                     'diskon' => $diskonTotal,
+                    'total' => $grandTotal,
                     'uang_bayar' => $uangBayar,
                     'kembalian' => $kembalian,
                     'catatan' => $validated['catatan'] ?? null,
-                    'kasir' => $request->user()?->nama ?? 'Kasir',
+                    'kasir' => $authUser?->nama ?? 'Kasir',
                     'items' => $createdSales,
                 ];
             });
@@ -196,14 +266,13 @@ class CPenjualan extends Controller
                 'success' => 'Transaksi POS berhasil diselesaikan!',
                 'data' => $invoiceResult,
             ], 201);
-
         } catch (\DomainException $e) {
             return response()->json(['error' => $e->getMessage()], 422);
-        } catch (\Illuminate\Validation\ValidationException $e) {
+        } catch (ValidationException $e) {
             return response()->json(['error' => $e->errors()], 422);
         } catch (\Exception $e) {
             Log::error('POS Checkout error', ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'Checkout gagal: ' . $e->getMessage()], 500);
+            return response()->json(['error' => 'Checkout gagal diproses'], 500);
         }
     }
 
@@ -215,6 +284,7 @@ class CPenjualan extends Controller
         try {
             $sales = MPenjualan::where('no_invoice', $no_invoice)
                 ->with(['stokHp', 'user'])
+                ->orderBy('id_penjualan', 'asc')
                 ->get();
 
             if ($sales->isEmpty()) {
@@ -222,24 +292,27 @@ class CPenjualan extends Controller
             }
 
             $first = $sales->first();
-            $subtotal = $sales->sum('harga_jual');
-            $diskon = (float) $first->diskon;
+            $subtotal = (float) $sales->sum('harga_jual');
+            $diskon = (float) $sales->sum('diskon');
             $total = max(0, $subtotal - $diskon);
+            $uangBayar = (float) $sales->sum('uang_bayar');
+            $kembalian = max(0, $uangBayar - $total);
 
             $receipt = [
                 'no_invoice' => $first->no_invoice,
-                'tanggal' => $first->tanggal,
+                'tanggal' => $first->tanggal?->format('Y-m-d') ?? $first->tanggal,
                 'created_at' => $first->created_at?->format('d/m/Y H:i') ?? date('d/m/Y H:i'),
                 'kasir' => $first->user?->nama ?? 'Kasir',
                 'nama_pembeli' => $first->nama_pembeli ?? 'Pelanggan Umum',
                 'no_hp_pembeli' => $first->no_hp_pembeli,
                 'met_pem' => $first->met_pem,
-                'uang_bayar' => (float) $first->uang_bayar,
-                'kembalian' => (float) $first->kembalian,
-                'subtotal' => (float) $subtotal,
+                'uang_bayar' => $uangBayar,
+                'kembalian' => $kembalian,
+                'subtotal' => $subtotal,
                 'diskon' => $diskon,
                 'total' => $total,
                 'catatan' => $first->catatan,
+                'store' => config('store'),
                 'items' => $sales->map(function ($s) {
                     $item = $s->stokHp;
                     return [
@@ -260,20 +333,22 @@ class CPenjualan extends Controller
             ];
 
             return response()->json($receipt, 200);
-
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Gagal memuat invoice: ' . $e->getMessage()], 500);
+            Log::error('Failed to load invoice', ['no_invoice' => $no_invoice, 'error' => $e->getMessage()]);
+            return response()->json(['error' => 'Gagal memuat invoice'], 500);
         }
     }
 
-    public function show($id)
+    public function show(Request $request, $id)
     {
         try {
             $penjualan = MPenjualan::with(['stokHp', 'user'])->findOrFail($id);
+            $this->maskStockCost($penjualan, $request->user());
             return response()->json($penjualan, 200);
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        } catch (ModelNotFoundException $e) {
             return response()->json(['error' => 'Data penjualan tidak ditemukan'], 404);
         } catch (\Exception $e) {
+            Log::error('Failed to fetch sale', ['id' => $id, 'error' => $e->getMessage()]);
             return response()->json(['error' => 'Gagal mengambil data penjualan'], 500);
         }
     }
@@ -285,7 +360,7 @@ class CPenjualan extends Controller
                 'tanggal' => 'sometimes|date',
                 'id_sales' => 'sometimes|exists:user,id_user',
                 'harga_jual' => 'sometimes|numeric|min:0',
-                'met_pem' => 'sometimes|string|max:50',
+                'met_pem' => 'sometimes|in:Cash,Transfer,QRIS',
                 'nama_pembeli' => 'nullable|string|max:255',
                 'no_hp_pembeli' => 'nullable|string|max:50',
                 'catatan' => 'nullable|string',
@@ -293,16 +368,19 @@ class CPenjualan extends Controller
 
             $penjualan = MPenjualan::findOrFail($id);
             $penjualan->update($validated);
+            $penjualan->load(['stokHp', 'user']);
+            $this->maskStockCost($penjualan, $request->user());
 
             return response()->json([
                 'success' => 'Data penjualan berhasil diperbarui',
-                'penjualan' => $penjualan->load(['stokHp', 'user'])
+                'penjualan' => $penjualan,
             ], 200);
-        } catch (\Illuminate\Validation\ValidationException $e) {
+        } catch (ValidationException $e) {
             return response()->json(['error' => $e->errors()], 422);
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        } catch (ModelNotFoundException $e) {
             return response()->json(['error' => 'Data penjualan tidak ditemukan'], 404);
         } catch (\Exception $e) {
+            Log::error('Failed to update sale', ['id' => $id, 'error' => $e->getMessage()]);
             return response()->json(['error' => 'Gagal memperbarui data penjualan'], 500);
         }
     }
@@ -319,14 +397,36 @@ class CPenjualan extends Controller
                     $stock->save();
                 }
 
+                if ($penjualan->no_invoice && ($penjualan->diskon > 0 || $penjualan->uang_bayar > 0)) {
+                    $siblings = MPenjualan::where('no_invoice', $penjualan->no_invoice)
+                        ->where('id_penjualan', '!=', $penjualan->id_penjualan)
+                        ->orderBy('id_penjualan', 'asc')
+                        ->get();
+
+                    if ($siblings->isNotEmpty()) {
+                        $remainingSubtotal = (float) $siblings->sum('harga_jual');
+                        $transferredDiskon = min((float) $penjualan->diskon, $remainingSubtotal);
+                        $remainingTotal = max(0, $remainingSubtotal - $transferredDiskon);
+                        $transferredUangBayar = (float) $penjualan->uang_bayar;
+                        $recalculatedKembalian = max(0, $transferredUangBayar - $remainingTotal);
+
+                        $firstSibling = $siblings->first();
+                        $firstSibling->update([
+                            'diskon' => $transferredDiskon,
+                            'uang_bayar' => $transferredUangBayar,
+                            'kembalian' => $recalculatedKembalian,
+                        ]);
+                    }
+                }
+
                 $penjualan->delete();
             });
 
             return response()->json(['success' => 'Data penjualan berhasil dihapus dan unit stok telah dikembalikan'], 200);
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        } catch (ModelNotFoundException $e) {
             return response()->json(['error' => 'Data penjualan tidak ditemukan'], 404);
         } catch (\Exception $e) {
-            Log::error('Sales delete error', ['error' => $e->getMessage()]);
+            Log::error('Sales delete error', ['id' => $id, 'error' => $e->getMessage()]);
             return response()->json(['error' => 'Gagal menghapus data penjualan'], 500);
         }
     }

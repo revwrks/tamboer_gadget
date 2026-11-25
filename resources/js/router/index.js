@@ -1,126 +1,116 @@
-import AppLayout from '@/layout/AppLayout.vue';
-import { createRouter, createWebHistory } from 'vue-router';
+import AppLayout from "@/layout/AppLayout.vue";
+import { useAuth } from "@/composables/useAuth";
+import { createRouter, createWebHistory } from "vue-router";
 
-const basePath = window.location.pathname.includes('/public/') 
-    ? window.location.pathname.split('/public/')[0] + '/public/' 
-    : '/';
+const basePath = window.location.pathname.includes("/public/")
+    ? window.location.pathname.split("/public/")[0] + "/public/"
+    : "/";
 
 const router = createRouter({
     history: createWebHistory(basePath),
     routes: [
         {
-            path: '/',
-            name: 'login',
-            component: () => import('@/views/pages/auth/Login.vue'),
-            meta: { guestOnly: true }
+            path: "/",
+            name: "login",
+            component: () => import("@/views/pages/auth/Login.vue"),
+            meta: { guestOnly: true, title: "Masuk" },
         },
         {
-            path: '/',
+            path: "/",
             component: AppLayout,
             meta: { requiresAuth: true },
             children: [
                 {
-                    path: '/dashboard',
-                    name: 'dashboard',
-                    component: () => import('@/views/Dashboard.vue'),
-                    meta: { requiresAuth: true }
+                    path: "/dashboard",
+                    name: "dashboard",
+                    component: () => import("@/views/Dashboard.vue"),
+                    meta: { requiresAuth: true, title: "Ringkasan", subtitle: "Ringkasan operasional dan performa toko" },
                 },
                 {
-                    path: '/pages/stok',
-                    name: 'stok',
-                    component: () => import('@/views/pages/Stok.vue'),
-                    meta: { requiresAuth: true }
+                    path: "/pages/penjualan",
+                    name: "penjualan",
+                    component: () => import("@/views/pages/Penjualan.vue"),
+                    meta: { requiresAuth: true, title: "Kasir POS", subtitle: "Transaksi cepat dan riwayat penjualan" },
                 },
                 {
-                    path: '/pages/penjualan',
-                    name: 'penjualan',
-                    component: () => import('@/views/pages/Penjualan.vue'),
-                    meta: { requiresAuth: true }
+                    path: "/pages/stok",
+                    name: "stok",
+                    component: () => import("@/views/pages/Stok.vue"),
+                    meta: { requiresAuth: true, title: "Inventaris", subtitle: "Katalog unit, IMEI, dan status etalase" },
                 },
                 {
-                    path: '/pages/laporan',
-                    name: 'laporan',
-                    component: () => import('@/views/pages/Laporan.vue'),
-                    meta: { requiresAuth: true, role: 'owner' }
+                    path: "/pages/laporan",
+                    name: "laporan",
+                    component: () => import("@/views/pages/Laporan.vue"),
+                    meta: { requiresAuth: true, role: "owner", title: "Laporan Keuangan", subtitle: "Rekapitulasi omset, HPP, dan laba bersih" },
                 },
                 {
-                    path: '/pages/akun',
-                    name: 'akun',
-                    component: () => import('@/views/pages/Akun.vue'),
-                    meta: { requiresAuth: true, role: 'owner' }
+                    path: "/pages/akun",
+                    name: "akun",
+                    component: () => import("@/views/pages/Akun.vue"),
+                    meta: { requiresAuth: true, role: "owner", title: "Tim & Akses", subtitle: "Manajemen akun owner dan kasir" },
                 },
-                // Demo / UIKit routes (protected for development)
-                {
-                    path: '/pages/empty',
-                    name: 'empty',
-                    component: () => import('@/views/pages/Empty.vue'),
-                    meta: { requiresAuth: true }
-                },
-                {
-                    path: '/pages/crud',
-                    name: 'crud',
-                    component: () => import('@/views/pages/Crud.vue'),
-                    meta: { requiresAuth: true }
-                },
-                {
-                    path: '/documentation',
-                    name: 'documentation',
-                    component: () => import('@/views/pages/Documentation.vue'),
-                    meta: { requiresAuth: true }
-                }
-            ]
+            ],
         },
         {
-            path: '/landing',
-            name: 'landing',
-            component: () => import('@/views/pages/Landing.vue')
+            path: "/auth/access",
+            name: "accessDenied",
+            component: () => import("@/views/pages/auth/Access.vue"),
+            meta: { title: "Akses Ditolak" },
         },
         {
-            path: '/pages/notfound',
-            name: 'notfound',
-            component: () => import('@/views/pages/NotFound.vue')
+            path: "/auth/error",
+            name: "error",
+            component: () => import("@/views/pages/auth/Error.vue"),
+            meta: { title: "Terjadi Kesalahan" },
         },
         {
-            path: '/auth/access',
-            name: 'accessDenied',
-            component: () => import('@/views/pages/auth/Access.vue')
+            path: "/pages/notfound",
+            name: "notfound",
+            component: () => import("@/views/pages/NotFound.vue"),
+            meta: { title: "Halaman Tidak Ditemukan" },
         },
         {
-            path: '/auth/error',
-            name: 'error',
-            component: () => import('@/views/pages/auth/Error.vue')
-        }
-    ]
+            path: "/:pathMatch(.*)*",
+            redirect: { name: "notfound" },
+        },
+    ],
 });
 
-// Navigation Guard
-router.beforeEach((to, from, next) => {
-    const token = localStorage.getItem('token');
-    const userRaw = localStorage.getItem('user');
-    let user = null;
-    try {
-        user = userRaw ? JSON.parse(userRaw) : null;
-    } catch (e) {
-        user = null;
-    }
-
-    const requiresAuth = to.matched.some(record => record.meta?.requiresAuth);
-    const guestOnly = to.matched.some(record => record.meta?.guestOnly);
+router.beforeEach(async (to, from, next) => {
+    const { token, user, verifySession, clearAuth } = useAuth();
+    const requiresAuth = to.matched.some((record) => record.meta?.requiresAuth);
+    const guestOnly = to.matched.some((record) => record.meta?.guestOnly);
     const requiredRole = to.meta?.role;
 
-    // 1. Belum login mencoba akses halaman berproteksi
-    if (requiresAuth && !token) {
-        return next({ name: 'login' });
+    if (requiresAuth && !token.value) {
+        return next({ name: "login" });
     }
 
-    // 2. Sudah login mencoba buka halaman login (guest only)
-    if (guestOnly && token) {
-        return next({ name: 'dashboard' });
+    if (guestOnly && token.value) {
+        return next({ name: "dashboard" });
     }
 
-    // 3. Hak akses role (misal: halaman akun/laporan butuh level 'owner')
-    if (requiresAuth && requiredRole && user?.level !== requiredRole) {
-        return next({ name: 'accessDenied' });
+    if (requiresAuth && token.value) {
+        try {
+            const verifiedUser = await verifySession();
+            if (!verifiedUser) {
+                clearAuth();
+                return next({ name: "login" });
+            }
+            if (requiredRole && verifiedUser.level !== requiredRole) {
+                return next({ name: "accessDenied" });
+            }
+        } catch {
+            clearAuth();
+            return next({ name: "login" });
+        }
+    } else if (requiresAuth && requiredRole && user.value?.level !== requiredRole) {
+        return next({ name: "accessDenied" });
+    }
+
+    if (to.meta?.title) {
+        document.title = `${to.meta.title} — Tamboer Gadget`;
     }
 
     next();

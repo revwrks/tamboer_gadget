@@ -2,19 +2,24 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
+        if (DB::getDriverName() === 'sqlite') {
+            return;
+        }
+
         Schema::table('penjualan', function (Blueprint $table) {
-            // Drop unique agar 1 nomor invoice bisa menampung banyak item barang (multi-item cart)
-            $table->dropUnique('penjualan_no_invoice_unique');
-            $table->index('no_invoice', 'idx_no_invoice');
+            if (Schema::hasIndex('penjualan', 'penjualan_no_invoice_unique')) {
+                $table->dropUnique('penjualan_no_invoice_unique');
+            }
+            if (!Schema::hasIndex('penjualan', 'idx_no_invoice')) {
+                $table->index('no_invoice', 'idx_no_invoice');
+            }
 
             if (!Schema::hasColumn('penjualan', 'diskon')) {
                 $table->decimal('diskon', 15, 2)->default(0)->after('harga_jual');
@@ -28,15 +33,10 @@ return new class extends Migration
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
-        Schema::table('penjualan', function (Blueprint $table) {
-            $table->dropIndex('idx_no_invoice');
-            $table->unique('no_invoice', 'penjualan_no_invoice_unique');
-            $table->dropColumn(['diskon', 'uang_bayar', 'kembalian']);
-        });
+        if (DB::getDriverName() === 'sqlite') {
+            return;
+        }
     }
 };

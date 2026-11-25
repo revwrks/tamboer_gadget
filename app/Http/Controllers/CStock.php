@@ -2,36 +2,46 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\MStock;
 use App\Models\MDeviceTac;
+use App\Models\MPenjualan;
+use App\Models\MStock;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 
 class CStock extends Controller
 {
+    private function maskCostForUser($stock, $user)
+    {
+        if ($stock && $user?->level !== 'owner') {
+            $stock->makeHidden('harga_masuk');
+        }
+        return $stock;
+    }
+
     public function index(Request $request)
     {
         try {
             $query = MStock::with('sales')->orderBy('id_stock', 'desc');
 
-            // Filter status: default 'ada', bisa 'all' atau 'terjual'
             if ($request->has('status') && $request->status !== 'all') {
                 $query->where('status', $request->status);
             } elseif (!$request->has('status')) {
                 $query->where('status', 'ada');
             }
 
-            // Filter kategori jika diminta
             if ($request->filled('kategori')) {
                 $query->where('kategori', $request->kategori);
             }
 
-            // Filter kondisi jika diminta
             if ($request->filled('kondisi')) {
                 $query->where('kondisi', $request->kondisi);
             }
 
-            $stok = $query->get();
+            $user = $request->user();
+            $stok = $query->get()->map(fn ($item) => $this->maskCostForUser($item, $user));
+
             return response()->json($stok, 200);
         } catch (\Exception $e) {
             Log::error('Failed to fetch stocks', ['error' => $e->getMessage()]);
@@ -54,13 +64,20 @@ class CStock extends Controller
                 'kondisi' => 'nullable|in:baru,second,refurbished',
                 'kelengkapan' => 'nullable|string|max:100',
                 'garansi' => 'nullable|string|max:100',
-                'harga_masuk' => 'required|numeric|min:0',
+                'harga_masuk' => 'nullable|numeric|min:0',
                 'harga_jual' => 'required|numeric|min:0',
                 'id_sales' => 'nullable|exists:user,id_user',
                 'catatan' => 'nullable|string',
             ]);
 
-            $sellerId = $validated['id_sales'] ?? $request->user()?->id_user;
+            $authUser = $request->user();
+            $sellerId = ($authUser?->level === 'owner' && !empty($validated['id_sales']))
+                ? $validated['id_sales']
+                : $authUser?->id_user;
+
+            $hargaMasuk = $authUser?->level === 'owner'
+                ? (float) ($validated['harga_masuk'] ?? 0)
+                : 0;
 
             $stok = MStock::create([
                 'tanggal' => $validated['tanggal'],
@@ -74,14 +91,13 @@ class CStock extends Controller
                 'kondisi' => $validated['kondisi'] ?? 'baru',
                 'kelengkapan' => $validated['kelengkapan'] ?? null,
                 'garansi' => $validated['garansi'] ?? null,
-                'harga_masuk' => $validated['harga_masuk'],
+                'harga_masuk' => $hargaMasuk,
                 'harga_jual' => $validated['harga_jual'],
                 'id_sales' => $sellerId,
                 'status' => 'ada',
                 'catatan' => $validated['catatan'] ?? null,
             ]);
 
-            // Self-learning TAC: Simpan TAC baru jika belum terdaftar
             if (!empty($validated['imei']) && !empty($validated['brand']) && !empty($validated['nama'])) {
                 $cleanImei = preg_replace('/\D/', '', $validated['imei']);
                 if (strlen($cleanImei) >= 8) {
@@ -99,29 +115,34 @@ class CStock extends Controller
                 }
             }
 
+            $stok->load('sales');
+            $this->maskCostForUser($stok, $authUser);
+
             return response()->json([
                 'success' => 'Stok berhasil ditambahkan',
-                'stok_hp' => $stok->load('sales')
+                'stok_hp' => $stok,
             ], 201);
-        } catch (\Illuminate\Validation\ValidationException $e) {
+        } catch (ValidationException $e) {
             return response()->json(['error' => $e->errors()], 422);
         } catch (\Exception $e) {
             Log::error('Failed to create stock', [
-                'input' => $request->all(),
+                'user_id' => $request->user()?->id_user,
                 'error' => $e->getMessage(),
             ]);
-            return response()->json(['error' => 'Gagal menambah stok: ' . $e->getMessage()], 500);
+            return response()->json(['error' => 'Gagal menambah stok'], 500);
         }
     }
 
-    public function show($id_stock)
+    public function show(Request $request, $id_stock)
     {
         try {
             $stok = MStock::with('sales')->findOrFail($id_stock);
+            $this->maskCostForUser($stok, $request->user());
             return response()->json($stok, 200);
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        } catch (ModelNotFoundException $e) {
             return response()->json(['error' => 'Data stok tidak ditemukan'], 404);
         } catch (\Exception $e) {
+            Log::error('Failed to fetch stock', ['id_stock' => $id_stock, 'error' => $e->getMessage()]);
             return response()->json(['error' => 'Gagal mengambil data stok'], 500);
         }
     }
@@ -150,16 +171,19 @@ class CStock extends Controller
 
             $stok = MStock::findOrFail($id_stock);
             $stok->update($validated);
+            $stok->load('sales');
+            $this->maskCostForUser($stok, $request->user());
 
             return response()->json([
                 'success' => 'Stok berhasil diperbarui',
-                'stok_hp' => $stok->load('sales')
+                'stok_hp' => $stok,
             ], 200);
-        } catch (\Illuminate\Validation\ValidationException $e) {
+        } catch (ValidationException $e) {
             return response()->json(['error' => $e->errors()], 422);
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        } catch (ModelNotFoundException $e) {
             return response()->json(['error' => 'Data stok tidak ditemukan'], 404);
         } catch (\Exception $e) {
+            Log::error('Failed to update stock', ['id_stock' => $id_stock, 'error' => $e->getMessage()]);
             return response()->json(['error' => 'Gagal memperbarui stok'], 500);
         }
     }
@@ -169,8 +193,7 @@ class CStock extends Controller
         try {
             $stok = MStock::findOrFail($id_stock);
 
-            // Cegah penghapusan jika barang sudah terjual atau tercatat di riwayat penjualan
-            if ($stok->status === 'terjual' || \App\Models\MPenjualan::where('id_stock', $id_stock)->exists()) {
+            if ($stok->status === 'terjual' || MPenjualan::where('id_stock', $id_stock)->exists()) {
                 return response()->json([
                     'error' => 'Barang ini tidak dapat dihapus karena sudah tercatat dalam riwayat penjualan toko.'
                 ], 422);
@@ -178,22 +201,25 @@ class CStock extends Controller
 
             $stok->delete();
             return response()->json(['success' => 'Stok berhasil dihapus'], 200);
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        } catch (ModelNotFoundException $e) {
             return response()->json(['error' => 'Data stok tidak ditemukan'], 404);
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Gagal menghapus stok: ' . $e->getMessage()], 500);
+            Log::error('Failed to delete stock', ['id_stock' => $id_stock, 'error' => $e->getMessage()]);
+            return response()->json(['error' => 'Gagal menghapus stok'], 500);
         }
     }
 
-    public function searchByImei($imei)
+    public function searchByImei(Request $request, $imei)
     {
         try {
             $stok = MStock::where('imei', $imei)->with('sales')->first();
             if ($stok) {
+                $this->maskCostForUser($stok, $request->user());
                 return response()->json($stok, 200);
             }
             return response()->json(['error' => 'Stok dengan IMEI tersebut tidak ditemukan'], 404);
         } catch (\Exception $e) {
+            Log::error('Failed to search stock by IMEI', ['error' => $e->getMessage()]);
             return response()->json(['error' => 'Gagal mencari data berdasarkan IMEI'], 500);
         }
     }
@@ -205,13 +231,12 @@ class CStock extends Controller
             if (strlen($clean) < 8) {
                 return response()->json([
                     'found' => false,
-                    'error' => 'Nomor IMEI harus memiliki minimal 8 digit TAC'
+                    'error' => 'Nomor IMEI harus memiliki minimal 8 digit TAC',
                 ], 400);
             }
 
             $tac = substr($clean, 0, 8);
 
-            // 1. Cek dari dictionary TAC lokal
             $device = MDeviceTac::where('tac', $tac)->first();
             if ($device) {
                 return response()->json([
@@ -222,11 +247,10 @@ class CStock extends Controller
                     'nama' => $device->model,
                     'storage' => $device->storage,
                     'ram' => $device->ram,
-                    'kategori' => $device->kategori ?? 'gadget'
+                    'kategori' => $device->kategori ?? 'gadget',
                 ], 200);
             }
 
-            // 2. Fallback: Cek dari riwayat stok barang yang pernah masuk
             $history = MStock::where('imei', 'LIKE', $tac . '%')->orderBy('id_stock', 'desc')->first();
             if ($history) {
                 return response()->json([
@@ -238,17 +262,18 @@ class CStock extends Controller
                     'storage' => $history->storage,
                     'ram' => $history->ram,
                     'warna' => $history->warna,
-                    'kategori' => $history->kategori ?? 'gadget'
+                    'kategori' => $history->kategori ?? 'gadget',
                 ], 200);
             }
 
             return response()->json([
                 'found' => false,
                 'tac' => $tac,
-                'message' => 'Model belum terdaftar di database TAC. Silakan lengkapi manual (akan otomatis tersimpan untuk unit berikutnya).'
+                'message' => 'Model belum terdaftar di database TAC. Lengkapi detail unit sekali, sistem akan menyimpannya otomatis.',
             ], 200);
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Gagal melakukan TAC lookup: ' . $e->getMessage()], 500);
+            Log::error('TAC lookup failed', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'Gagal melakukan TAC lookup'], 500);
         }
     }
 }

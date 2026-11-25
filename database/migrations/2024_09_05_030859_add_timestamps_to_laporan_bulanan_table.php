@@ -6,17 +6,23 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    public function up()
+    public function up(): void
     {
+        if (!Schema::hasTable('laporan_bulanan')) {
+            return;
+        }
         Schema::table('laporan_bulanan', function (Blueprint $table) {
-            $table->timestamps();
+            if (!Schema::hasColumn('laporan_bulanan', 'created_at')) {
+                $table->timestamp('created_at')->nullable();
+            }
+            if (!Schema::hasColumn('laporan_bulanan', 'updated_at')) {
+                $table->timestamp('updated_at')->nullable();
+            }
         });
     }
 
-    public function down()
+    public function down(): void
     {
-        Schema::table('laporan_bulanan', function (Blueprint $table) {
-            $table->dropTimestamps();
-        });
+        //
     }
 };

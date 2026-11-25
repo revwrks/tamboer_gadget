@@ -6,17 +6,23 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    public function up()
+    public function up(): void
     {
+        if (!Schema::hasTable('cache')) {
+            return;
+        }
         Schema::table('cache', function (Blueprint $table) {
-            $table->timestamps();
+            if (!Schema::hasColumn('cache', 'created_at')) {
+                $table->timestamp('created_at')->nullable();
+            }
+            if (!Schema::hasColumn('cache', 'updated_at')) {
+                $table->timestamp('updated_at')->nullable();
+            }
         });
     }
 
-    public function down()
+    public function down(): void
     {
-        Schema::table('cache', function (Blueprint $table) {
-            $table->dropTimestamps();
-        });
+        //
     }
 };

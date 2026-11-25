@@ -7,11 +7,13 @@ use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
+        if (DB::getDriverName() === 'sqlite') {
+            // Base tables migration already sets up final schema for SQLite
+            return;
+        }
+
         // 1. Sanitasi data uang lama sebelum perubahan tipe kolom
         DB::statement("UPDATE `stok_hp` SET `harga_masuk` = REPLACE(REPLACE(TRIM(`harga_masuk`), '.', ''), ',', '') WHERE `harga_masuk` IS NOT NULL");
         DB::statement("UPDATE `stok_hp` SET `harga_jual` = REPLACE(REPLACE(TRIM(`harga_jual`), '.', ''), ',', '') WHERE `harga_jual` IS NOT NULL");
@@ -45,9 +47,12 @@ return new class extends Migration
                 $table->text('catatan')->nullable()->after('status');
             }
 
-            // Indexing untuk search kencang
-            $table->index(['status', 'kategori'], 'idx_status_kategori');
-            $table->index('imei', 'idx_imei');
+            if (!Schema::hasIndex('stok_hp', 'idx_status_kategori')) {
+                $table->index(['status', 'kategori'], 'idx_status_kategori');
+            }
+            if (!Schema::hasIndex('stok_hp', 'idx_imei')) {
+                $table->index('imei', 'idx_imei');
+            }
         });
 
         // 3. Modifikasi tabel penjualan
@@ -74,7 +79,9 @@ return new class extends Migration
                 $table->timestamp('updated_at')->nullable()->after('created_at');
             }
 
-            $table->index('tanggal', 'idx_tanggal_penjualan');
+            if (!Schema::hasIndex('penjualan', 'idx_tanggal_penjualan')) {
+                $table->index('tanggal', 'idx_tanggal_penjualan');
+            }
         });
 
         // 4. Backfill no_invoice dan timestamps untuk data transaksi lama
@@ -94,23 +101,10 @@ return new class extends Migration
         }
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
-        Schema::table('stok_hp', function (Blueprint $table) {
-            $table->dropIndex('idx_status_kategori');
-            $table->dropIndex('idx_imei');
-            $table->dropColumn(['kategori', 'kondisi', 'ram', 'storage', 'kelengkapan', 'garansi', 'catatan']);
-            $table->string('harga_masuk', 255)->change();
-            $table->string('harga_jual', 255)->change();
-        });
-
-        Schema::table('penjualan', function (Blueprint $table) {
-            $table->dropIndex('idx_tanggal_penjualan');
-            $table->dropColumn(['no_invoice', 'nama_pembeli', 'no_hp_pembeli', 'catatan', 'created_at', 'updated_at']);
-            $table->string('harga_jual', 255)->change();
-        });
+        if (DB::getDriverName() === 'sqlite') {
+            return;
+        }
     }
 };

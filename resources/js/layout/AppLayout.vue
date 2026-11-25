@@ -1,70 +1,73 @@
 <script setup>
-import { useLayout } from '@/layout/composables/layout';
-import { computed, ref, watch } from 'vue';
-import AppFooter from './AppFooter.vue';
-import AppSidebar from './AppSidebar.vue';
-import AppTopbar from './AppTopbar.vue';
+import { onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useRoute } from "vue-router";
+import { useLayout } from "@/layout/composables/layout";
+import AppFooter from "./AppFooter.vue";
+import AppSidebar from "./AppSidebar.vue";
+import AppTopbar from "./AppTopbar.vue";
 
-const { layoutConfig, layoutState, isSidebarActive, resetMenu } = useLayout();
+const route = useRoute();
+const { isDesktopCollapsed, isMobileSidebarOpen, closeMobileSidebar } = useLayout();
+const menuTriggerRef = ref(null);
 
-const outsideClickListener = ref(null);
-
-watch(isSidebarActive, (newVal) => {
-    if (newVal) {
-        bindOutsideClickListener();
-    } else {
-        unbindOutsideClickListener();
+const handleKeyDown = (event) => {
+    if (event.key === "Escape" && isMobileSidebarOpen.value) {
+        closeMobileSidebar();
+        menuTriggerRef.value?.focus?.();
     }
+};
+
+watch(
+    () => route.fullPath,
+    () => {
+        if (isMobileSidebarOpen.value) {
+            closeMobileSidebar();
+        }
+    }
+);
+
+onMounted(() => {
+    window.addEventListener("keydown", handleKeyDown);
 });
 
-const containerClass = computed(() => {
-    return {
-        'layout-overlay': layoutConfig.menuMode === 'overlay',
-        'layout-static': layoutConfig.menuMode === 'static',
-        'layout-static-inactive': layoutState.staticMenuDesktopInactive && layoutConfig.menuMode === 'static',
-        'layout-overlay-active': layoutState.overlayMenuActive,
-        'layout-mobile-active': layoutState.staticMenuMobileActive
-    };
+onBeforeUnmount(() => {
+    window.removeEventListener("keydown", handleKeyDown);
 });
-
-function bindOutsideClickListener() {
-    if (!outsideClickListener.value) {
-        outsideClickListener.value = (event) => {
-            if (isOutsideClicked(event)) {
-                resetMenu();
-            }
-        };
-        document.addEventListener('click', outsideClickListener.value);
-    }
-}
-
-function unbindOutsideClickListener() {
-    if (outsideClickListener.value) {
-        document.removeEventListener('click', outsideClickListener);
-        outsideClickListener.value = null;
-    }
-}
-
-function isOutsideClicked(event) {
-    const sidebarEl = document.querySelector('.layout-sidebar');
-    const topbarEl = document.querySelector('.layout-menu-button');
-
-    return !(sidebarEl.isSameNode(event.target) || sidebarEl.contains(event.target) || topbarEl.isSameNode(event.target) || topbarEl.contains(event.target));
-}
 </script>
 
 <template>
-    <div class="layout-wrapper" :class="containerClass">
-        <app-topbar></app-topbar>
-        <app-sidebar></app-sidebar>
-        <div class="layout-main-container">
-            <div class="layout-main">
-                <router-view></router-view>
-            </div>
-            <app-footer></app-footer>
+    <div class="min-h-screen bg-canvas text-ink flex">
+        <a
+            href="#main-content"
+            class="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[1100] focus:px-3.5 focus:py-2 focus:rounded-lg focus:bg-surface focus:text-ink focus:border focus:border-hairline focus:shadow-md text-xs font-semibold"
+        >
+            Lewati ke konten utama
+        </a>
+
+        <!-- Mobile Backdrop -->
+        <div
+            v-if="isMobileSidebarOpen"
+            class="fixed inset-0 z-40 bg-black/40 lg:hidden transition-opacity"
+            aria-hidden="true"
+            @click="closeMobileSidebar"
+        ></div>
+
+        <!-- Sidebar -->
+        <AppSidebar />
+
+        <!-- Main Column -->
+        <div
+            class="flex-1 min-w-0 flex flex-col min-h-screen transition-[padding] duration-200"
+            :class="isDesktopCollapsed ? 'lg:pl-0' : 'lg:pl-[248px]'"
+        >
+            <AppTopbar @register-trigger="(el) => (menuTriggerRef = el)" />
+
+            <main id="main-content" class="flex-1 w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
+                <router-view />
+            </main>
+
+            <AppFooter />
         </div>
-        <div class="layout-mask animate-fadein"></div>
     </div>
     <Toast />
 </template>
-

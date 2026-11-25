@@ -9,7 +9,27 @@ module.exports = {
             md: '768px',
             lg: '992px',
             xl: '1200px',
-            '2xl': '1920px'
-        }
-    }
+            '2xl': '1920px',
+        },
+        extend: {
+            colors: {
+                canvas: 'var(--bg-canvas)',
+                surface: 'var(--bg-surface)',
+                elevated: 'var(--bg-elevated)',
+                subtle: 'var(--bg-subtle)',
+                hover: 'var(--bg-hover)',
+                ink: 'var(--text-primary)',
+                muted: 'var(--text-secondary)',
+                tertiary: 'var(--text-tertiary)',
+                hairline: 'var(--border-subtle)',
+                'hairline-strong': 'var(--border-strong)',
+                accent: {
+                    DEFAULT: 'var(--accent)',
+                    hover: 'var(--accent-hover)',
+                    soft: 'var(--accent-soft)',
+                    ink: 'var(--accent-ink)',
+                },
+            },
+        },
+    },
 };

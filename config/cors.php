@@ -1,33 +1,22 @@
 <?php
+
 return [
+    'paths' => ['api/*', 'sanctum/csrf-cookie'],
 
-/*
-|--------------------------------------------------------------------------
-| Cross-Origin Resource Sharing (CORS) Configuration
-|--------------------------------------------------------------------------
-|
-| This configuration determines what cross-origin operations may execute
-| in web browsers. You are free to adjust these settings as needed.
-|
-| For more information: https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
-|
-*/
+    'allowed_methods' => ['*'],
 
-'paths' => ['api/*', 'sanctum/csrf-cookie', 'http://localhost:5173', 'http://192.168.1.82:5173'],  // Make sure this is an array
+    'allowed_origins' => array_values(array_filter(array_map(
+        'trim',
+        explode(',', env('CORS_ALLOWED_ORIGINS', 'http://localhost:8000,http://127.0.0.1:8000,http://localhost:5173'))
+    ))),
 
-'allowed_methods' => ['*'],
+    'allowed_origins_patterns' => [],
 
-'allowed_origins' => ['*'],  // You can replace this with specific domains if needed
+    'allowed_headers' => ['*'],
 
-'allowed_origins_patterns' => [],
+    'exposed_headers' => [],
 
-'allowed_headers' => ['*'],
+    'max_age' => 0,
 
-'exposed_headers' => [],
-
-'max_age' => 0,
-
-'supports_credentials' => true,
-
+    'supports_credentials' => false,
 ];
-?>
